@@ -1,3 +1,5 @@
+![Orderzx — an autonomous, stealth-first browser for DeepSeek Harness: the wordmark over a dark neon grid beside an animated panel mock with session tabs, a live page stream and the agent's ghost cursor](docs/assets/orderzx-banner.svg)
+
 # Orderzx
 
 **A live, stealth-capable, autonomous Chrome inside your DeepSeek Harness conversation** — the `dsh-browser` plugin.

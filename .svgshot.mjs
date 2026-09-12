@@ -1,0 +1,12 @@
+import { chromium } from 'playwright-core'
+const browser = await chromium.connectOverCDP('http://127.0.0.1:9222')
+const ctx = browser.contexts()[0] ?? await browser.newContext()
+const page = await ctx.newPage()
+await page.setViewportSize({ width: 1280, height: 420 })
+await page.goto('file:///home/user/dsh-browser/docs/assets/orderzx-banner.svg')
+await page.waitForTimeout(3200)
+await page.screenshot({ path: '/tmp/banner-a.png' })
+await page.waitForTimeout(2600)
+await page.screenshot({ path: '/tmp/banner-b.png' })
+await page.close()
+process.exit(0)

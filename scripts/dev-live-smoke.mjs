@@ -312,6 +312,9 @@ try {
   await runTool('browser_click', { session: sessionId, x: 0.5, y: 0.35 })
   const gestureClip = await gestureClipPromise
   step('the clip carries the gesture track for actions inside its window', gestureClip?.ok === true && Array.isArray(gestureClip.events) && gestureClip.events.some(e => e.type === 'click' && typeof e.x === 'number' && /click/.test(e.text)) && gestureClip.frames.every?.(f => typeof f.t === 'number') !== false, JSON.stringify(gestureClip?.events))
+  const reel = await runTool('browser_reel', { session: sessionId, seconds: 2, fps: 2 })
+  const reelRes = await fetch(`${clipBase}${reel.url}`).catch(() => undefined)
+  step('browser_reel serves the standalone artifact as sandboxed html', reel?.ok === true && reel.frames >= 3 && reelRes?.status === 200 && /text\/html/.test(reelRes.headers.get('content-type') ?? '') && /default-src 'none'/.test(reelRes.headers.get('content-security-policy') ?? ''), `${reelRes?.status} ${reelRes?.headers.get('content-type') ?? ''}`)
   clipUnmount()
   clipWeb.server.close()
 

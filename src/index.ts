@@ -52,6 +52,7 @@ export {
   type CaptureVerdict,
 } from './access.js'
 export { prune, pruneAll, saveCapture, storeSize } from './capture-store.js'
+export { buildReelHtml } from './reels.js'
 export {
   BrowserHostController, hostMatches, isPrivateHost,
   type ActionResult, type HostEvent, type HostSession, type PointerOwner, type Refusal,

@@ -11,7 +11,7 @@
  * read as a failure.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -944,5 +944,21 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   step('the clip manifest carries the gestures recorded inside its window', clip?.ok === true && Array.isArray(onDisk?.events) && onDisk.events.some(e => e.type === 'click' && e.x === 0.42 && e.text.includes('Sign in')) && onDisk.events.some(e => e.type === 'scroll' && e.text === 'scroll down 480px'), JSON.stringify(onDisk?.events))
   step('clip frames carry timestamps so replays can sync the hand', Array.isArray(onDisk?.frames) && onDisk.frames.every(f => typeof f.t === 'number' && f.t > 0), '')
   step('captions read like a human narrating, never echoing typed text', captionOfEvent({ type: 'type', characters: 12, secret: true }) === 'type 12 chars (secret)' && captionOfEvent({ type: 'key', key: 'Enter' }) === 'press Enter', '')
+}
+
+// ── C11: one call → a standalone replay reel artifact ───────────────────────
+{
+  const { host, tools } = build()
+  const reelPromise = run(tools, TOOL_NAMES.reel, { seconds: 2, fps: 2 })
+  host.session(SESSION).interactions.publish('agent', { type: 'scroll', deltaX: 0, deltaY: 240 })
+  const reel = await reelPromise
+  step('browser_reel bakes frames + gesture track into one artifact', reel?.ok === true && reel.frames >= 3 && reel.events >= 1 && typeof reel.bytes === 'number' && reel.bytes > 1000, JSON.stringify(reel).slice(0, 160))
+  step('the reel result carries a chat-ready line with the signed artifact url', typeof reel?.chatLine === 'string' && reel.chatLine.includes('🎞️') && reel.chatLine.includes(reel.url) && reel.url.includes('token='), '')
+  const reelPath = join(captureDir(), SESSION, 'clips', `${reel.reelId}.html`)
+  const html = existsSync(reelPath) ? readFileSync(reelPath, 'utf8') : ''
+  step('the reel artifact is standalone html with the player and the track inlined', html.startsWith('<!doctype html>') && html.includes('FRAMES = [') && html.includes('scroll down 240px') && html.includes('data:image/jpeg;base64'), `${html.length} bytes`)
+  const { tools: dryTools } = build({}, { noSession: true })
+  const refused = await run(dryTools, TOOL_NAMES.reel, {})
+  step('reel without a browser is refused like every other tool', refused?.ok === false && refused.refused === 'no-session', JSON.stringify(refused).slice(0, 120))
 }
 finish()

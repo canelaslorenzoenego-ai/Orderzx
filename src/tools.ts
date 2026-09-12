@@ -30,8 +30,9 @@ import type { BrowserHostController } from './host.js'
 import { probeEngine } from './engine/index.js'
 import { CAPTURE_ROUTE_PREFIX, FRAME_SOURCES, TOOL_NAMES } from './protocol.js'
 import type { ClipRef, FrameSource } from './protocol.js'
-import { saveClipManifest } from './capture-store.js'
+import { saveClipManifest, saveReel } from './capture-store.js'
 import { captionOfEvent } from './interactions.js'
+import { buildReelHtml } from './reels.js'
 import { redactConfig } from './config.js'
 import type { ChallengePipeline, Verdict } from './challenge/pipeline.js'
 import { sessionBoundWarning } from './challenge/pipeline.js'
@@ -1866,6 +1867,98 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     },
   })
 
+  const browserReel = defineTool({
+    name: TOOL_NAMES.reel,
+    description:
+      'Record a self-contained replay REEL of the live page: one call samples real frames for `seconds` at `fps`, '
+      + 'bakes them (base64) together with the captioned gesture track into a single standalone HTML artifact, saves '
+      + 'it in the session and returns a signed url sandboxed by a strict CSP. Use it when the user asks to SEE, SAVE '
+      + 'or SHARE what the agent did ("show me how you checked out", "send me the run"): run your actions DURING the '
+      + 'reel window (start the reel first, act, then await it) so the hand is in the film, and include the returned '
+      + '`chatLine` VERBATIM in your reply. Prefer `browser_clip` for short raw clips; the reel is the human-facing artifact.',
+    parameters: {
+      session: sessionSchema,
+      seconds: { type: 'number', description: 'Reel length 2–20 seconds (default 8).' },
+      fps: { type: 'number', description: 'Sample rate 1–3 fps (default 2). Frames are inlined, so keep it lean.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          reelId: { type: 'string' },
+          frames: { type: 'number' },
+          events: { type: 'number', description: 'Gestures baked into the reel.' },
+          bytes: { type: 'number', description: 'Artifact size on disk.' },
+          title: { type: 'string' },
+          url: { type: 'string', description: 'Signed, CSP-sandboxed artifact url.' },
+          delivered: { type: 'array', items: { type: 'string' } },
+          chatLine: { type: 'string', description: 'INCLUDE VERBATIM IN YOUR REPLY when the user asked to see the run.' },
+          message: { type: 'string' },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args, exec) {
+      const resolved = resolveTarget(host, args.session)
+      if (!resolved.ok) return refusalValue(resolved) as never
+      const seconds = Math.min(20, Math.max(2, Math.round(Number(args.seconds ?? 8))))
+      const fps = Math.min(3, Math.max(1, Math.round(Number(args.fps ?? 2))))
+      const total = Math.max(2, seconds * fps)
+      const frames: { t: number; base64: string }[] = []
+      let bytes = 0
+      const trace = host.session(resolved.sessionId)?.interactions
+      const startSeq = trace ? trace.since(0).latest : 0
+      for (let i = 0; i < total; i += 1) {
+        if (exec.signal?.aborted) break
+        const data = await resolved.page.capture({ format: 'jpeg', quality: host.config.frames.jpegQuality }).catch(() => undefined)
+        if (data && data.byteLength > 0) {
+          bytes += data.byteLength
+          if (bytes > 6_000_000) break // inlined artifact cap: stop, never balloon
+          frames.push({ t: Date.now(), base64: Buffer.from(data).toString('base64') })
+        }
+        if (i < total - 1) await sleep(Math.round(1000 / fps), exec.signal).catch(() => undefined)
+      }
+      if (frames.length < 2) {
+        return { ok: false, message: `only sampled ${frames.length} frame(s) — is the browser started and the page visible?` } as never
+      }
+      const meta = await resolved.page
+        .evaluateIsolated<{ title?: string; url?: string }>(`(() => ({ title: document.title || '', url: location.origin + location.pathname }))()`)
+        .catch(() => undefined)
+      const title = typeof meta?.title === 'string' ? meta.title.slice(0, 120) : ''
+      const pageUrl = typeof meta?.url === 'string' ? meta.url.slice(0, 200) : ''
+      const windowRecords = trace ? trace.since(startSeq).records : []
+      const events = windowRecords.map(record => {
+        const event = record.event as Record<string, unknown>
+        return {
+          t: record.at,
+          type: record.event.type,
+          actor: record.actor,
+          ...(typeof event.x === 'number' && typeof event.y === 'number' ? { x: event.x, y: event.y } : {}),
+          text: captionOfEvent(record.event),
+        }
+      })
+      const reelId = `reel-${Date.now().toString(36)}-${frames.length}`
+      const html = buildReelHtml({ fps, title, url: pageUrl, recordedAt: Date.now(), frames, events })
+      const reelPath = await saveReel(resolved.sessionId, reelId, html)
+      const grant = await host.signPath(reelPath, { ttlMs: 60 * 60 * 1000 })
+      const reelUrl = `${CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(grant.token)}`
+      acted(resolved.sessionId, TOOL_NAMES.reel, `reel ${seconds}s @ ${fps}fps — ${frames.length} frames, ${events.length} gestures${title ? ` · ${title}` : ''}`)
+      const chatLine = `🎞️ replay reel ${seconds}s @ ${fps}fps (${frames.length} frames, ${events.length} gestures)${title ? ` — ${title}` : ''} · open: ${reelUrl}`
+      return {
+        ok: true,
+        reelId,
+        frames: frames.length,
+        events: events.length,
+        bytes: html.length,
+        title,
+        url: reelUrl,
+        delivered: ['session', 'chat-line'],
+        chatLine,
+      } as never
+    },
+  })
+
   const browserTranscript = defineTool({
     name: TOOL_NAMES.transcript,
     description:
@@ -1941,6 +2034,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     browserWorkflow,
     browserClip,
     browserTranscript,
+    browserReel,
   ]
   return Object.fromEntries(all.map(tool => [tool.name, tool]))
 }

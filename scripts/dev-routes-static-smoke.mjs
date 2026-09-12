@@ -250,6 +250,11 @@ state.takeover = false
   step('a signed clip manifest serves application/json through the capture route', manifestRes.status === 200 && (manifestRes.headers.get('content-type') ?? '').includes('application/json'), `got ${manifestRes.status} ${manifestRes.headers.get('content-type')}`)
   const manifestBad = await req(`${protocol.CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(manifestGrant.token.slice(0, -2))}xx`)
   step('a tampered manifest token is rejected', manifestBad.status === 403, `got ${manifestBad.status}`)
+  const { saveReel } = await import(pathToFileURL(join(root, 'lib', 'capture-store.js')).href)
+  const reelPath = await saveReel('smoke-session', 'reel-route1', '<!doctype html><html><body>reel</body></html>')
+  const reelGrant = await access.signCaptureToken(reelPath)
+  const reelRes = await req(`${protocol.CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(reelGrant.token)}`)
+  step('a signed reel serves text/html behind a sandbox CSP', reelRes.status === 200 && (reelRes.headers.get('content-type') ?? '').includes('text/html') && (reelRes.headers.get('content-security-policy') ?? '').includes("default-src 'none'"), `got ${reelRes.status} ${reelRes.headers.get('content-type')} ${reelRes.headers.get('content-security-policy')}`)
   step('capture response is no-store', goodRes.headers.get('cache-control') === 'no-store', goodRes.headers.get('cache-control') ?? '')
 
   const escape = await access.signCaptureToken(join(dir, '..', '..', '..', 'etc', 'passwd'))

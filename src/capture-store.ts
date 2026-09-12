@@ -63,6 +63,15 @@ export async function saveClipManifest(sessionId: string, manifest: ClipManifest
   return path
 }
 
+/** Write a standalone replay reel (self-contained HTML) under the session. */
+export async function saveReel(sessionId: string, reelId: string, html: string): Promise<string> {
+  const dir = join(captureDir(), sessionId, 'clips')
+  await mkdir(dir, { recursive: true, mode: 0o700 })
+  const path = join(dir, `${reelId}.html`)
+  await writeFile(path, html, { mode: 0o600 })
+  return path
+}
+
 export async function readClipManifest(path: string): Promise<ClipManifest | undefined> {
   try {
     const { readFile } = await import('node:fs/promises')

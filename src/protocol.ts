@@ -86,6 +86,7 @@ export const TOOL_NAMES = {
   workflow: 'browser_workflow',
   clip: 'browser_clip',
   transcript: 'browser_transcript',
+  reel: 'browser_reel',
 } as const
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES]

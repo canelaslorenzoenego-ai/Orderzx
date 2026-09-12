@@ -177,10 +177,16 @@ export class Routes implements RouteHandlers {
     const file = await openVerifiedCapture(payload.path)
     if (!file) return this.#fail(res, 404, 'capture unavailable')
     res.writeHead(200, {
-      'Content-Type': payload.path.endsWith('.png') ? 'image/png' : payload.path.endsWith('.json') ? 'application/json; charset=utf-8' : 'image/jpeg',
+      'Content-Type': payload.path.endsWith('.png') ? 'image/png' : payload.path.endsWith('.json') ? 'application/json; charset=utf-8' : payload.path.endsWith('.html') ? 'text/html; charset=utf-8' : 'image/jpeg',
       'Content-Length': String(file.bytes.byteLength),
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
+      // Reels are artifacts that embed page content; even though captions are
+      // escaped at build time, a sandbox CSP means a hostile label could never
+      // fetch, navigate or phone home from the plugin's origin.
+      ...(payload.path.endsWith('.html')
+        ? { 'Content-Security-Policy': "default-src 'none'; img-src data:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" }
+        : {}),
     })
     res.end(file.bytes)
   }

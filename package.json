@@ -52,7 +52,7 @@
     "build": "tsc -p tsconfig.json && pnpm run build:client && pnpm run build:standalone",
     "build:client": "tsc -p tsconfig.client.json && tsdown src/client/index.tsx --config tsdown.config.mjs --format cjs --platform browser --target es2022 --tsconfig tsconfig.client.json --out-dir .client-build --clean --sourcemap --logLevel warn && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-frame-static-smoke.mjs && node scripts/dev-panel-smoke.mjs",
+    "test": "node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-frame-static-smoke.mjs && node scripts/dev-panel-smoke.mjs && node scripts/dev-mcp-smoke.mjs",
     "test:live": "DSH_BROWSER_LIVE=1 node scripts/dev-live-smoke.mjs",
     "build:standalone": "tsdown --config tsdown.standalone.config.mjs && node scripts/build-standalone.mjs",
     "test:e2e": "DSH_BROWSER_LIVE=1 node scripts/dev-e2e-smoke.mjs"

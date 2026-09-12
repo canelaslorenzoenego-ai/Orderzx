@@ -32,5 +32,7 @@ jobs:
         run: node scripts/dev-frame-static-smoke.mjs
       - name: panel suite
         run: node scripts/dev-panel-smoke.mjs
+      - name: mcp bridge suite
+        run: node scripts/dev-mcp-smoke.mjs
       # The live + e2e suites need a real Chromium and only ever touch a local
       # fixture; they run on maintainer machines, never against third-party sites.

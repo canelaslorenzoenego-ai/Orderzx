@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orderzx — the browser the model drives</title>
+<meta name="description" content="Orderzx (dsh-browser): a live, stealth-capable, autonomous Chrome inside your DeepSeek Harness conversation. 22 tools, CAPTCHA handoff, live stream you can grab.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect x='2' y='3' width='16' height='11' rx='2' fill='none' stroke='%233fb950' stroke-width='1.6'/%3E%3Cpath d='M7 17h6M10 14v3' stroke='%233fb950' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpolyline points='4.5,8.5 7.5,8.5 8.6,6.2 10,10.6 11.2,8.5 15.5,8.5' fill='none' stroke='%2367e8f9' stroke-width='1.3'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #05070d;
+    --bg2: #0a1220;
+    --panel: #0d1526;
+    --panel2: #101b30;
+    --line: rgba(88, 166, 255, .16);
+    --line-strong: rgba(88, 166, 255, .38);
+    --text: #e6edf3;
+    --dim: #8b949e;
+    --dimmer: rgba(255, 255, 255, .45);
+    --cyan: #67e8f9;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --amber: #d29922;
+    --violet: #bc8cff;
+    --red: #f85149;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  ::selection { background: rgba(103, 232, 249, .28); }
+
+  /* ── ambient background ─────────────────────────────────────── */
+  .ambient { position: fixed; inset: 0; z-index: -2; pointer-events: none; }
+  .ambient .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(88,166,255,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(88,166,255,.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 30%, transparent 100%);
+  }
+  .ambient .glow { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .5; }
+  .ambient .g1 { width: 640px; height: 640px; left: -180px; top: -220px; background: radial-gradient(circle, rgba(34,211,238,.20), transparent 65%); animation: drift1 26s ease-in-out infinite alternate; }
+  .ambient .g2 { width: 720px; height: 720px; right: -240px; top: 120px; background: radial-gradient(circle, rgba(63,185,80,.14), transparent 65%); animation: drift2 32s ease-in-out infinite alternate; }
+  .ambient .g3 { width: 560px; height: 560px; left: 32%; top: 58%; background: radial-gradient(circle, rgba(188,140,255,.10), transparent 65%); animation: drift1 40s ease-in-out infinite alternate-reverse; }
+  @keyframes drift1 { to { transform: translate(90px, 60px) scale(1.12); } }
+  @keyframes drift2 { to { transform: translate(-110px, 90px) scale(1.08); } }
+
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── nav ────────────────────────────────────────────────────── */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    background: rgba(5, 7, 13, .72);
+    border-bottom: 1px solid transparent;
+    transition: border-color .3s, background .3s;
+  }
+  nav.scrolled { border-bottom-color: var(--line); background: rgba(5, 7, 13, .88); }
+  .nav-in { display: flex; align-items: center; gap: 28px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.02em; font-size: 18px; color: var(--text); text-decoration: none; }
+  .brand svg { display: block; }
+  .nav-links { display: flex; gap: 4px; margin-left: auto; }
+  .nav-links a {
+    color: var(--dim); text-decoration: none; font-size: 14px; font-weight: 500;
+    padding: 7px 12px; border-radius: 8px; transition: color .2s, background .2s;
+  }
+  .nav-links a:hover { color: var(--text); background: rgba(88,166,255,.08); }
+  .nav-links a.nav-cta {
+    margin-left: 8px; font-size: 13.5px; font-weight: 700; color: #04121a;
+    background: linear-gradient(120deg, var(--cyan), var(--green));
+    padding: 8px 15px; border-radius: 9px; text-decoration: none;
+    box-shadow: 0 0 22px rgba(63, 185, 80, .28);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 0 30px rgba(103, 232, 249, .4); }
+  @media (max-width: 760px) { .nav-links a:not(.keep) { display: none; } }
+
+  /* ── hero ───────────────────────────────────────────────────── */
+  header.hero { padding-top: 84px; padding-bottom: 40px; }
+  [id] { scroll-margin-top: 84px; }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 56px; align-items: center; }
+  @media (max-width: 940px) { .hero-grid { grid-template-columns: 1fr; gap: 40px; } }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: .18em;
+    color: var(--green); text-transform: uppercase;
+    border: 1px solid rgba(63, 185, 80, .35); background: rgba(63, 185, 80, .07);
+    padding: 6px 13px; border-radius: 999px; margin-bottom: 26px;
+  }
+  .kicker .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(63,185,80,.5);} 50% { opacity: .55; box-shadow: 0 0 0 6px rgba(63,185,80,0);} }
+  h1.word {
+    font-size: clamp(56px, 8.4vw, 104px); font-weight: 800; letter-spacing: -.035em; line-height: .98;
+    background: linear-gradient(105deg, var(--cyan) 5%, var(--blue) 48%, var(--green) 95%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 34px rgba(88, 166, 255, .25));
+  }
+  .hero p.lede { margin-top: 22px; font-size: 19px; color: var(--dim); max-width: 34em; }
+  .hero p.lede strong { color: var(--text); font-weight: 600; }
+  .caret { display: inline-block; width: .55em; height: 1.05em; background: var(--green); vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+  .hero-ctas { display: flex; gap: 14px; margin-top: 34px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 13px 22px; border-radius: 12px; font-size: 15px; font-weight: 650;
+    text-decoration: none; transition: transform .2s, box-shadow .2s, border-color .2s;
+  }
+  .btn-primary { color: #04121a; background: linear-gradient(120deg, var(--cyan), var(--green)); box-shadow: 0 6px 30px rgba(63,185,80,.3); }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(103,232,249,.4); }
+  .btn-ghost { color: var(--text); border: 1px solid var(--line-strong); background: rgba(13, 21, 38, .6); }
+  .btn-ghost:hover { transform: translateY(-2px); border-color: var(--cyan); box-shadow: 0 6px 26px rgba(88,166,255,.18); }
+
+  /* hero panel mock */
+  .panel-mock {
+    position: relative; border-radius: 16px; border: 1px solid var(--line-strong);
+    background: linear-gradient(180deg, var(--panel2), var(--panel));
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 60px rgba(88, 166, 255, .07) inset;
+    overflow: hidden;
+    animation: floaty 7s ease-in-out infinite;
+  }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+  .panel-mock svg { display: block; width: 100%; height: auto; }
+  .chatbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 11px 14px; background: #0a1220; border-top: 1px solid var(--line);
+  }
+  .chat-hint { color: var(--dimmer); font-size: 13px; font-family: var(--mono); }
+  .capsule-chip {
+    display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+    background: rgba(13, 21, 38, .92); border: 1px solid rgba(63,185,80,.5);
+    border-radius: 999px; padding: 7px 14px 7px 10px;
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    box-shadow: 0 0 24px rgba(63, 185, 80, .25);
+    animation: chip-pop 6s ease-in-out infinite;
+    transform-origin: left center;
+  }
+  @keyframes chip-pop {
+    0% { transform: scale(0); opacity: 0; }
+    6% { transform: scale(1.12); opacity: 1; }
+    10% { transform: scale(1); }
+    86% { transform: scale(1); opacity: 1; }
+    94%,100% { transform: scale(0); opacity: 0; }
+  }
+
+  /* ── stats band ─────────────────────────────────────────────── */
+  .stats {
+    margin: 64px 0 0; border-block: 1px solid var(--line);
+    background: linear-gradient(90deg, rgba(13,21,38,.65), rgba(10,18,32,.35));
+  }
+  .stats-in { display: grid; grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 760px) { .stats-in { grid-template-columns: repeat(2, 1fr); } }
+  .stat { padding: 30px 18px; text-align: center; border-left: 1px solid var(--line); }
+  .stat:first-child { border-left: 0; }
+  @media (max-width: 760px) { .stat:nth-child(3) { border-left: 0; } }
+  .stat b { display: block; font-size: 40px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  .stat:nth-child(1) b { color: var(--cyan); } .stat:nth-child(2) b { color: var(--green); }
+  .stat:nth-child(3) b { color: var(--violet); } .stat:nth-child(4) b { color: var(--amber); }
+  .stat span { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+
+  /* ── sections ───────────────────────────────────────────────── */
+  section { padding: 96px 0 0; }
+  .sec-head { max-width: 640px; margin-bottom: 52px; }
+  .sec-tag { font-family: var(--mono); font-size: 12.5px; letter-spacing: .2em; text-transform: uppercase; color: var(--cyan); }
+  h2 { font-size: clamp(30px, 4.4vw, 44px); font-weight: 800; letter-spacing: -.03em; line-height: 1.12; margin-top: 12px; }
+  .sec-head p { margin-top: 14px; color: var(--dim); font-size: 16.5px; }
+
+  /* feature cards */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 940px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 620px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    position: relative; border-radius: 16px; border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(16,27,48,.72), rgba(13,21,38,.5));
+    padding: 26px 24px 24px; overflow: hidden;
+    transition: transform .25s, border-color .25s, box-shadow .25s;
+  }
+  .card::before {
+    content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity .3s; pointer-events: none;
+    background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%), rgba(103,232,249,.09), transparent 65%);
+  }
+  .card:hover { transform: translateY(-4px); border-color: var(--line-strong); box-shadow: 0 18px 44px rgba(0,0,0,.4); }
+  .card:hover::before { opacity: 1; }
+  .card .ico {
+    width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center;
+    border: 1px solid var(--line-strong); margin-bottom: 16px;
+  }
+  .card h3 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+  .card p { margin-top: 8px; font-size: 14px; color: var(--dim); }
+  .card code { font-family: var(--mono); font-size: 12.5px; color: var(--cyan); background: rgba(103,232,249,.08); padding: 1px 5px; border-radius: 5px; }
+
+  /* flow timeline */
+  .flow { position: relative; display: grid; gap: 0; }
+  .flow-step { display: grid; grid-template-columns: 92px 1fr; gap: 26px; padding-bottom: 44px; position: relative; }
+  .flow-step:last-child { padding-bottom: 0; }
+  .flow-rail { position: relative; display: flex; justify-content: center; }
+  .flow-rail::after {
+    content: ""; position: absolute; top: 76px; bottom: -8px; width: 2px;
+    background: linear-gradient(180deg, var(--line-strong), rgba(88,166,255,.06));
+  }
+  .flow-step:last-child .flow-rail::after { display: none; }
+  .glyph-box {
+    width: 76px; height: 64px; border-radius: 14px; display: grid; place-items: center;
+    background: var(--panel); border: 1px solid var(--line-strong); color: var(--text);
+    box-shadow: 0 0 26px rgba(88, 166, 255, .12);
+  }
+  .flow-step h3 { font-size: 19px; font-weight: 750; letter-spacing: -.015em; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .flow-step h3 .t { font-family: var(--mono); font-size: 12px; color: var(--green); font-weight: 500; }
+  .flow-step p { margin-top: 7px; color: var(--dim); font-size: 15px; max-width: 46em; }
+
+  /* terminal */
+  .term-wrap { display: grid; grid-template-columns: 1fr 320px; gap: 26px; align-items: start; }
+  @media (max-width: 940px) { .term-wrap { grid-template-columns: 1fr; } }
+  .term {
+    border-radius: 14px; border: 1px solid var(--line-strong); overflow: hidden;
+    background: #0a0f1a; box-shadow: 0 24px 60px rgba(0,0,0,.5);
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.75;
+  }
+  .term-bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+  .term-bar i { width: 11px; height: 11px; border-radius: 50%; }
+  .term-bar .ttl { margin-left: 8px; color: var(--dimmer); font-size: 12px; }
+  .term-body { padding: 18px 18px 22px; min-height: 372px; }
+  .term .cmd { color: var(--text); white-space: pre-wrap; }
+  .term .cmd::before { content: "$ "; color: var(--green); }
+  .term .ok { color: var(--green); }
+  .term .warn { color: var(--amber); }
+  .term .line { opacity: 0; animation: linein .3s forwards; }
+  @keyframes linein { to { opacity: 1; } }
+  .toolcloud { display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
+  .toolchip {
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+    background: rgba(13, 21, 38, .6); transition: color .2s, border-color .2s, transform .2s;
+  }
+  .toolchip:hover { color: var(--cyan); border-color: var(--cyan); transform: translateY(-2px); }
+
+  /* tests */
+  .tests-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; }
+  @media (max-width: 940px) { .tests-grid { grid-template-columns: 1fr; } }
+  .bar-row { display: grid; grid-template-columns: 92px 1fr 52px; gap: 14px; align-items: center; margin-bottom: 15px; }
+  .bar-row .lbl { font-family: var(--mono); font-size: 12.5px; color: var(--dim); text-align: right; }
+  .bar-track { height: 12px; border-radius: 7px; background: rgba(88,166,255,.08); border: 1px solid var(--line); overflow: hidden; }
+  .bar-fill { height: 100%; width: 0; border-radius: 7px; transition: width 1.2s cubic-bezier(.22,1,.36,1); }
+  .bar-row .n { font-family: var(--mono); font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .tests-note { border-left: 3px solid var(--green); padding: 6px 0 6px 20px; color: var(--dim); font-size: 15px; }
+  .tests-note b { color: var(--text); }
+  .tests-note .big { display: block; font-size: 54px; font-weight: 800; letter-spacing: -.03em; color: var(--green); line-height: 1.1; margin-bottom: 6px; }
+
+  /* repo cta */
+  .cta-band {
+    margin-top: 96px; border-radius: 22px; border: 1px solid var(--line-strong);
+    background:
+      radial-gradient(600px 240px at 12% 0%, rgba(103,232,249,.12), transparent 60%),
+      radial-gradient(600px 240px at 88% 100%, rgba(63,185,80,.12), transparent 60%),
+      linear-gradient(180deg, var(--panel2), var(--panel));
+    padding: 56px 48px; text-align: center; position: relative; overflow: hidden;
+  }
+  .cta-band h2 { margin-top: 0; }
+  .cta-band p { color: var(--dim); max-width: 44em; margin: 14px auto 30px; }
+  .cta-band .btn { margin: 0 7px; }
+
+  footer { margin-top: 90px; border-top: 1px solid var(--line); padding: 34px 0 44px; }
+  .foot-in { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; color: var(--dim); font-size: 13.5px; }
+  .foot-in a { color: var(--dim); text-decoration: none; }
+  .foot-in a:hover { color: var(--cyan); }
+  .foot-in .sep { opacity: .4; }
+
+  /* reveal on scroll */
+  .rv { opacity: 0; transform: translateY(26px); transition: opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1); }
+  .rv.in { opacity: 1; transform: none; }
+
+  /* glyph keyframes (the real ones, shipped in the plugin) */
+  @keyframes dsh-browser-scan { 0% { transform: translateY(-10%); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(110%); opacity: 0; } }
+  @keyframes dsh-browser-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+  @keyframes dsh-browser-pips { 0%,100% { opacity: .25; } 40%,60% { opacity: 1; } }
+  @keyframes dsh-browser-draw { 0% { stroke-dashoffset: 14; } 55%,100% { stroke-dashoffset: 0; } }
+  @keyframes dsh-browser-bars { 0%,100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+  @keyframes dsh-browser-ekg { 0% { stroke-dashoffset: 32; } 60%,100% { stroke-dashoffset: -32; } }
+  @keyframes dsh-browser-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .42; transform: scale(.82); } }
+  @keyframes hm-scan { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: .55; } 90% { opacity: .55; } 100% { transform: translateY(150px); opacity: 0; } }
+  @keyframes hm-cursor { 0%,100% { transform: translate(0,0); } 42%,58% { transform: translate(-88px,52px); } }
+  @keyframes hm-ripple { 0%,40% { transform: scale(.2); opacity: 0; } 48% { transform: scale(1); opacity: .85; } 62%,100% { transform: scale(2.2); opacity: 0; } }
+  @keyframes hm-type { 0% { width: 0; } 55%,100% { width: 118px; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="ambient" aria-hidden="true">
+  <div class="grid"></div>
+  <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
+</div>
+
+<nav id="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" aria-label="Orderzx home">
+      <svg width="26" height="24" viewBox="0 0 20 18" fill="none" aria-hidden="true">
+        <rect x="1.6" y="1.6" width="16.8" height="10.4" rx="1.8" stroke="#58a6ff" stroke-width="1.4"/>
+        <polyline points="4,7 7,7 8.2,4.6 9.6,9.2 10.8,7 16,7" stroke="#3fb950" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M7 15.4h6M10 12v3.4" stroke="#58a6ff" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      Orderzx
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#flow">How it boots</a>
+      <a href="#tools">The tools</a>
+      <a href="#tests">Tests</a>
+      <a class="nav-cta keep" href="https://github.com/canelaslorenzoenego-ai/Orderzx" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero wrap" id="top">
+  <div class="hero-grid">
+    <div>
+      <span class="kicker"><span class="dot"></span>DeepSeek Harness plugin · dsh-browser</span>
+      <h1 class="word">Orderzx</h1>
+      <p class="lede">
+        A <strong>fully autonomous, stealth-first Chrome</strong> that lives inside your harness
+        conversation. The model drives with humanized input; you watch every click, swipe and
+        keystroke on a live stream — and you can grab the mouse at any moment<span class="caret" aria-hidden="true"></span>
+      </p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="https://github.com/canelaslorenzoenego-ai/Orderzx" target="_blank" rel="noopener">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          View the repo
+        </a>
+        <a class="btn btn-ghost" href="#flow">See how it boots ↓</a>
+      </div>
+    </div>
+
+    <!-- animated dashboard mock -->
+    <div class="panel-mock rv" aria-label="Animated mock of the Orderzx dashboard: session tabs, a live page stream with the agent's ghost cursor, and a timeline">
+      <svg viewBox="0 0 560 372" role="img" aria-hidden="true">
+        <defs>
+          <clipPath id="scr"><rect x="14" y="86" width="532" height="212"/></clipPath>
+          <linearGradient id="btnG" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#58a6ff" stop-opacity=".35"/><stop offset="1" stop-color="#58a6ff" stop-opacity=".15"/>
+          </linearGradient>
+        </defs>
+        <!-- tab strip -->
+        <rect x="0" y="0" width="560" height="40" fill="#101b30"/>
+        <circle cx="20" cy="20" r="4.4" fill="#f85149" opacity=".85"/>
+        <circle cx="36" cy="20" r="4.4" fill="#d29922" opacity=".85"/>
+        <circle cx="52" cy="20" r="4.4" fill="#3fb950" opacity=".85"/>
+        <rect x="72" y="9" width="70" height="24" rx="7" fill="#1c2b47" stroke="#58a6ff" stroke-opacity=".5"/>
+        <text x="107" y="25" font-family="ui-monospace,monospace" font-size="11" fill="rgba(255,255,255,.85)" text-anchor="middle">Home</text>
+        <rect x="148" y="9" width="132" height="24" rx="7" fill="#16233c" stroke="#3fb950" stroke-opacity=".6"/>
+        <circle cx="163" cy="21" r="7" fill="hsl(195,70%,45%)"/>
+        <text x="163" y="24.6" font-family="ui-monospace,monospace" font-size="8.5" fill="#04060c" text-anchor="middle">E</text>
+        <text x="176" y="25" font-family="ui-monospace,monospace" font-size="10.5" fill="rgba(255,255,255,.85)">researcher</text>
+        <circle cx="256" cy="21" r="3.2" fill="#3fb950" style="animation:dsh-browser-pulse 1.4s ease-in-out infinite"/>
+        <text x="266" y="25.5" font-family="ui-monospace,monospace" font-size="11" fill="rgba(255,255,255,.45)">×</text>
+        <rect x="288" y="9" width="104" height="24" rx="7" fill="#101b30" stroke="#58a6ff" stroke-opacity=".22"/>
+        <circle cx="303" cy="21" r="7" fill="hsl(280,60%,55%)"/>
+        <text x="303" y="24.6" font-family="ui-monospace,monospace" font-size="8.5" fill="#04060c" text-anchor="middle">S</text>
+        <text x="316" y="25" font-family="ui-monospace,monospace" font-size="10.5" fill="rgba(255,255,255,.6)">shopper</text>
+        <text x="380" y="25.5" font-family="ui-monospace,monospace" font-size="11" fill="rgba(255,255,255,.45)">×</text>
+        <!-- url bar -->
+        <rect x="14" y="50" width="532" height="26" rx="8" fill="#0a1220" stroke="#58a6ff" stroke-opacity=".22"/>
+        <circle cx="30" cy="63" r="3.4" fill="#3fb950"/>
+        <text x="42" y="67" font-family="ui-monospace,monospace" font-size="11.5" fill="rgba(255,255,255,.55)">https://restaurant.example/menu</text>
+        <!-- screen -->
+        <g clip-path="url(#scr)">
+          <rect x="14" y="86" width="532" height="212" fill="#0b1322"/>
+          <rect x="32" y="102" width="180" height="14" rx="4" fill="#58a6ff" fill-opacity=".4"/>
+          <rect x="32" y="128" width="300" height="8" rx="3" fill="rgba(255,255,255,.10)"/>
+          <rect x="32" y="144" width="250" height="8" rx="3" fill="rgba(255,255,255,.07)"/>
+          <rect x="32" y="168" width="150" height="86" rx="8" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.10)"/>
+          <rect x="196" y="168" width="150" height="86" rx="8" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.10)"/>
+          <rect x="360" y="168" width="150" height="86" rx="8" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.10)"/>
+          <rect x="44" y="184" width="110" height="8" rx="3" fill="rgba(255,255,255,.13)"/>
+          <rect x="44" y="200" width="80" height="8" rx="3" fill="rgba(255,255,255,.08)"/>
+          <rect x="44" y="224" width="56" height="13" rx="6.5" fill="#3fb950" fill-opacity=".6"/>
+          <!-- the target button -->
+          <rect x="392" y="222" width="92" height="17" rx="8.5" fill="url(#btnG)" stroke="#58a6ff" stroke-opacity=".65"/>
+          <rect x="404" y="228" width="68" height="5" rx="2.5" fill="rgba(255,255,255,.0)" style="animation:hm-type 6s steps(14) infinite" />
+          <!-- scanline -->
+          <rect x="14" y="86" width="532" height="3" fill="#67e8f9" style="animation:hm-scan 5.5s linear infinite"/>
+          <!-- ghost cursor + ripple -->
+          <circle cx="438" cy="230" r="10" fill="none" stroke="#67e8f9" stroke-width="1.8" style="animation:hm-ripple 6s ease-out infinite; transform-box:fill-box; transform-origin:center"/>
+          <g style="animation:hm-cursor 6s ease-in-out infinite">
+            <path d="M438 230 l.6 16 4.3-4.3 2.9 6.5 2.9-1.2-2.9-6.5 6-.7z" fill="#e6edf3" stroke="#0d1526" stroke-width="1"/>
+          </g>
+        </g>
+        <!-- status row -->
+        <rect x="0" y="306" width="560" height="34" fill="#101b30"/>
+        <circle cx="22" cy="323" r="4" fill="#3fb950" style="animation:dsh-browser-pulse 2.4s ease-in-out infinite"/>
+        <text x="34" y="327" font-family="ui-monospace,monospace" font-size="11.5" fill="rgba(255,255,255,.5)">live · 1366×768 · humanized · patchright</text>
+        <text x="540" y="327" font-family="ui-monospace,monospace" font-size="11.5" fill="rgba(255,255,255,.5)" text-anchor="end">[ Take over ]</text>
+        <!-- timeline strip -->
+        <rect x="0" y="340" width="560" height="32" fill="#0a1220"/>
+        <text x="22" y="360" font-family="ui-monospace,monospace" font-size="10.5" fill="rgba(255,255,255,.42)">▸ timeline</text>
+        <text x="92" y="360" font-family="ui-monospace,monospace" font-size="10.5" fill="#3fb950">browser_click e12 · button "Add to cart" · 0.4s ago</text>
+      </svg>
+      <div class="chatbar">
+      <div class="capsule-chip" aria-hidden="true">
+        <svg width="20" height="18" viewBox="0 0 20 17" fill="none">
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" fill="#58a6ff" opacity=".18"/>
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" stroke="#58a6ff" stroke-width="1.2"/>
+          <rect x="4.4" y="6.2" width="2.6" height="2.6" rx=".6" fill="#58a6ff" style="animation:dsh-browser-pips 1.1s linear infinite"/>
+          <rect x="8.2" y="6.2" width="2.6" height="2.6" rx=".6" fill="#58a6ff" style="animation:dsh-browser-pips 1.1s linear infinite .18s"/>
+          <rect x="12" y="6.2" width="2.6" height="2.6" rx=".6" fill="#58a6ff" style="animation:dsh-browser-pips 1.1s linear infinite .36s"/>
+          <path d="M7.4 13.4v1.9M12.6 13.4v1.9M5.6 15.9h8.8" stroke="#8b949e" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+        starting browser…
+      </div>
+      <span class="chat-hint">Ask DeepSeek anything…</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="wrap stats-in">
+    <div class="stat rv"><b data-count="22">0</b><span>model-facing tools</span></div>
+    <div class="stat rv"><b data-count="491">0</b><span>green checks</span></div>
+    <div class="stat rv"><b data-count="3">0</b><span>stealth engines</span></div>
+    <div class="stat rv"><b data-count="320">0</b><span>ms capsule pop</span></div>
+  </div>
+</div>
+
+<section id="features" class="wrap">
+  <div class="sec-head rv">
+    <span class="sec-tag">// capabilities</span>
+    <h2>Everything an autonomous browser needs — and honest about what it can't do.</h2>
+    <p>Nine design decisions that make Orderzx feel less like a scraper and more like a colleague sitting at the keyboard.</p>
+  </div>
+  <div class="cards">
+    <div class="card rv">
+      <div class="ico" style="background:rgba(103,232,249,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#67e8f9" stroke-width="1.5" stroke-linejoin="round"><path d="M10 2.2 16 4.6v4.2c0 3.6-2.5 6-6 7.4-3.5-1.4-6-3.8-6-7.4V4.6z"/><path d="M7.4 9.6l1.9 1.9 3.5-3.6" stroke-linecap="round"/></svg>
+      </div>
+      <h3>Stealth that tells the truth</h3>
+      <p>Patchright by default — patched CDP, isolated-world evals, no <code>webdriver</code> tell. And <code>posture()</code> reports exactly which protections are live and which gaps remain, per engine.</p>
+    </div>
+    <div class="card rv">
+      <div class="ico" style="background:rgba(210,153,34,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#d29922" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h6m0 0L6.6 7.6M9 10l-2.4 2.4"/><path d="M17 10h-6m0 0 2.4-2.4M11 10l2.4 2.4"/><circle cx="10" cy="10" r="8.2" stroke-dasharray="3 3"/></svg>
+      </div>
+      <h3>CAPTCHA handoff, not CAPTCHA breaking</h3>
+      <p>When a challenge appears the agent pauses and hands the widget to <em>you</em> — in-session, with your fingerprint and IP. The one solve method that always works, and always should.</p>
+    </div>
+    <div class="card rv">
+      <div class="ico" style="background:rgba(63,185,80,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="3.4" width="15.6" height="11" rx="1.8"/><path d="M8 6.8v4.2l3.6-2.1z" fill="#3fb950" stroke="none"/><path d="M7 17.4h6"/></svg>
+      </div>
+      <h3>A live stream you can grab</h3>
+      <p>Tiered transport: on-demand screenshots, CDP screencast when flagged, DOM fallback. Gesture channel paints the agent's cursor, ripples and swipes — then <em>Take over</em> flips every tool to <code>pointer-owned</code>.</p>
+    </div>
+    <div class="card rv">
+      <div class="ico" style="background:rgba(188,140,255,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#bc8cff" stroke-width="1.5" stroke-linecap="round"><path d="M1.8 10S4.6 4.8 10 4.8 18.2 10 18.2 10 15.4 15.2 10 15.2 1.8 10 1.8 10z"/><circle cx="10" cy="10" r="2.6"/><path d="M14.6 4.2l1.6-1.6M15 8h2.2" stroke="#67e8f9"/></svg>
+      </div>
+      <h3>Eyes the model can point at</h3>
+      <p><code>browser_see</code> numbers every interactive element on the screenshot (set-of-marks) and flashes the overlay on your stream. <code>mark: 7</code> works as a ref alias — and dies with the refs on navigation.</p>
+    </div>
+    <div class="card rv">
+      <div class="ico" style="background:rgba(88,166,255,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5a6 6 0 0 1 10.2-3.2"/><path d="M16 9.5A6 6 0 0 1 5.8 12.7"/><path d="M14.4 4.4v3h-3M5.6 15.6v-3h3"/></svg>
+      </div>
+      <h3>Self-healing refs</h3>
+      <p>A re-rendered page shouldn't cost a full re-observe. Dead refs re-snapshot once and heal onto a <em>unique</em> role+name match — announced on the timeline. Two matches? Fails loudly. Never guesses.</p>
+    </div>
+    <div class="card rv">
+      <div class="ico" style="background:rgba(248,81,73,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linecap="round"><path d="M10 18s6.4-4.1 6.4-9A6.4 6.4 0 0 0 3.6 9c0 4.9 6.4 9 6.4 9z" stroke="none" fill="rgba(248,81,73,.14)"/><circle cx="10" cy="9" r="6.6"/><path d="M7.6 9h4.8M10 6.6v4.8" stroke="#f85149"/></svg>
+      </div>
+      <h3>Cookies without the leak</h3>
+      <p><code>browser_cookies</code> lists metadata only — name, domain, flags, expiry. Values are credentials and are stripped at the engine boundary, so a transcript can never become a credential dump.</p>
+    </div>
+    <div class="card rv">
+      <div class="ico" style="background:rgba(103,232,249,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#67e8f9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="3.6" width="15.2" height="10" rx="1.6"/><path d="M6.6 16.6h6.8M10 13.6v3"/><path d="M5.4 6.6h6M5.4 9h4" stroke-opacity=".6"/></svg>
+      </div>
+      <h3>Desktop view, done properly</h3>
+      <p>Chrome-for-Android's "Request desktop site" for agents: UA string, UA client hints and touch emulation swapped in all three places sites check — every tab, including ones opened later.</p>
+    </div>
+    <div class="card rv">
+      <div class="ico" style="background:rgba(63,185,80,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linejoin="round"><path d="M2.6 6.4h5l1.4-1.8h8.4v10H9"/><rect x="2.6" y="6.4" width="8" height="8" rx="1.2" fill="rgba(63,185,80,.14)"/></svg>
+      </div>
+      <h3>Sub-agent browsers</h3>
+      <p><code>browser_start({ label: "researcher" })</code> — one custom tab per session in the panel: origin avatar, live-phase pulse, desktop badge, an × that closes just that browser. Parallel by design.</p>
+    </div>
+    <div class="card rv">
+      <div class="ico" style="background:rgba(188,140,255,.08)">
+        <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#bc8cff" stroke-width="1.5" stroke-linecap="round"><rect x="2.4" y="3.2" width="15.2" height="9.6" rx="1.6"/><path d="M5 6h2.2M5 8.4h1.4" stroke-opacity=".7"/><circle cx="15" cy="11" r="1" fill="#bc8cff" stroke="none"/><path d="M7 16.2h6M10 12.8v3.4"/></svg>
+      </div>
+      <h3>A monitor that tells the story</h3>
+      <p>The chatbar glyph runs a ceremony per boot step — scanline, warming pips, shield draw-on, signal bars — then a live EKG when frames arrive. Status you can read at a glance, from across the room.</p>
+    </div>
+  </div>
+</section>
+
+<section id="flow" class="wrap">
+  <div class="sec-head rv">
+    <span class="sec-tag">// the first twelve seconds</span>
+    <h2>How it boots — the real timings, from the shipped code.</h2>
+    <p>The same five beats the README hero animates, with the actual monitor ceremonies beside them.</p>
+  </div>
+  <div class="flow">
+    <div class="flow-step rv">
+      <div class="flow-rail"><div class="glyph-box">
+        <svg width="44" height="38" viewBox="0 0 20 17" fill="none">
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" fill="#58a6ff" opacity=".16"/>
+          <g clip-path="url(#fg1)"><rect x="2.2" y="2.2" width="15.6" height="2.1" fill="#58a6ff" opacity=".85" style="animation:dsh-browser-scan 1.5s linear infinite"/></g>
+          <clipPath id="fg1"><rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2"/></clipPath>
+          <rect x="4.4" y="8.2" width="2.2" height="2.6" fill="#58a6ff" style="animation:dsh-browser-blink .9s steps(1) infinite"/>
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" stroke="#58a6ff" stroke-width="1.1"/>
+          <circle cx="17.4" cy="11.6" r=".9" fill="#58a6ff" style="animation:dsh-browser-blink 1s steps(1) infinite"/>
+          <path d="M7.4 13.4v1.9M12.6 13.4v1.9M5.6 15.9h8.8" stroke="#8b949e" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+      </div></div>
+      <div>
+        <h3>The capsule pops on the chatbar <span class="t">320 ms · scale overshoot 1.18</span></h3>
+        <p>A tiny monitor appears where you type: "starting browser…". No modal, no context switch — the session announces itself in the surface you're already looking at.</p>
+      </div>
+    </div>
+    <div class="flow-step rv">
+      <div class="flow-rail"><div class="glyph-box">
+        <svg width="44" height="38" viewBox="0 0 20 17" fill="none">
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" fill="#58a6ff" opacity=".16"/>
+          <g fill="#58a6ff">
+            <rect x="4.4" y="6.2" width="2.6" height="2.6" rx=".6" style="animation:dsh-browser-pips 1.1s linear infinite"/>
+            <rect x="8.2" y="6.2" width="2.6" height="2.6" rx=".6" style="animation:dsh-browser-pips 1.1s linear infinite .18s"/>
+            <rect x="12" y="6.2" width="2.6" height="2.6" rx=".6" style="animation:dsh-browser-pips 1.1s linear infinite .36s"/>
+          </g>
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" stroke="#58a6ff" stroke-width="1.1"/>
+          <circle cx="17.4" cy="11.6" r=".9" fill="#58a6ff" style="animation:dsh-browser-blink 1s steps(1) infinite"/>
+          <path d="M7.4 13.4v1.9M12.6 13.4v1.9M5.6 15.9h8.8" stroke="#8b949e" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+      </div></div>
+      <div>
+        <h3>The dashboard extends <span class="t">420 ms AUTO_OPEN_DELAY + 180 ms slide</span></h3>
+        <p>The capsule becomes a docked panel: session tabs, URL bar, frame viewport, timeline drawer. It opens itself exactly once per boot — a deliberate open is never stolen.</p>
+      </div>
+    </div>
+    <div class="flow-step rv">
+      <div class="flow-rail"><div class="glyph-box">
+        <svg width="44" height="38" viewBox="0 0 20 17" fill="none">
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" fill="#58a6ff" opacity=".16"/>
+          <path d="M10 3.6 13.4 5v2.6c0 2.2-1.5 3.6-3.4 4.4-1.9-.8-3.4-2.2-3.4-4.4V5z" stroke="#58a6ff" stroke-width="1.1" stroke-linejoin="round" stroke-dasharray="14" style="animation:dsh-browser-draw 1.2s ease-out infinite"/>
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" stroke="#58a6ff" stroke-width="1.1"/>
+          <circle cx="17.4" cy="11.6" r=".9" fill="#58a6ff" style="animation:dsh-browser-blink 1s steps(1) infinite"/>
+          <path d="M7.4 13.4v1.9M12.6 13.4v1.9M5.6 15.9h8.8" stroke="#8b949e" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+      </div></div>
+      <div>
+        <h3>Boot phases play as ceremonies <span class="t">spinning-up → warming → hardening → connecting</span></h3>
+        <p>Scanline and blink cursor while the engine spins; three pips warming; a shield drawing itself as stealth patches apply; signal bars reaching for the first frame. The LED blinks until frames arrive — then goes solid.</p>
+      </div>
+    </div>
+    <div class="flow-step rv">
+      <div class="flow-rail"><div class="glyph-box">
+        <svg width="44" height="38" viewBox="0 0 20 17" fill="none">
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" fill="#3fb950" opacity=".2"/>
+          <polyline points="2.6,7 6,7 7.4,4.2 9,9.6 10.4,7 17.4,7" stroke="#3fb950" stroke-width="1.1" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="32" style="animation:dsh-browser-ekg 1.6s linear infinite"/>
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" stroke="#3fb950" stroke-width="1.1"/>
+          <circle cx="17.4" cy="11.6" r=".9" fill="#3fb950"/>
+          <path d="M7.4 13.4v1.9M12.6 13.4v1.9M5.6 15.9h8.8" stroke="#8b949e" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+      </div></div>
+      <div>
+        <h3>The live stream paints — with the agent's hands <span class="t">frames + gesture channel (SSE)</span></h3>
+        <p>Real frames, and over them: the ghost cursor's path, click ripples, target outlines, scroll arrows, swipes, keystroke counts. When <code>browser_see</code> runs, the numbered overlay flashes on your stream too.</p>
+      </div>
+    </div>
+    <div class="flow-step rv">
+      <div class="flow-rail"><div class="glyph-box" style="border-color:rgba(210,153,34,.55)">
+        <svg width="44" height="38" viewBox="0 0 20 17" fill="none">
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" fill="#d29922" opacity=".22"/>
+          <g stroke="#d29922" stroke-width="1.4" stroke-linecap="round" style="animation:dsh-browser-blink 1s steps(1) infinite">
+            <path d="M10 4.2v4.2"/><path d="M10 10.6v0.2"/>
+          </g>
+          <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" stroke="#d29922" stroke-width="1.1"/>
+          <circle cx="17.4" cy="11.6" r=".9" fill="#d29922"/>
+          <path d="M7.4 13.4v1.9M12.6 13.4v1.9M5.6 15.9h8.8" stroke="#8b949e" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+      </div></div>
+      <div>
+        <h3>A CAPTCHA? The agent hands it to you <span class="t">amber banner · pointer → you · hand back when done</span></h3>
+        <p>The stream keeps running, the widget is yours — your fingerprint, your IP, your intent. Solve it, hand back, and the agent resumes exactly where it paused. Nothing is ever solved <em>for</em> you silently.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="tools" class="wrap">
+  <div class="sec-head rv">
+    <span class="sec-tag">// the tool surface</span>
+    <h2>Twenty-two tools, one canonical JSON answer each.</h2>
+    <p>Refusals are typed, not prose. Secrets are never echoed. Every action lands on the timeline.</p>
+  </div>
+  <div class="term-wrap">
+    <div class="term rv">
+      <div class="term-bar">
+        <i style="background:#f85149"></i><i style="background:#d29922"></i><i style="background:#3fb950"></i>
+        <span class="ttl">agent session · researcher</span>
+      </div>
+      <div class="term-body" id="term"></div>
+    </div>
+    <div class="toolcloud rv" id="toolcloud" aria-label="All 22 tool names"></div>
+  </div>
+</section>
+
+<section id="tests" class="wrap">
+  <div class="sec-head rv">
+    <span class="sec-tag">// verification</span>
+    <h2>491 checks, all green — against a real Chromium.</h2>
+    <p>Static suites prove the contracts; the live and e2e suites drive an actual browser over CDP, including the self-heal and cookie-metadata guarantees.</p>
+  </div>
+  <div class="tests-grid">
+    <div class="rv" id="bars">
+      <div class="bar-row"><span class="lbl">tools</span><div class="bar-track"><div class="bar-fill" data-w="100" style="background:linear-gradient(90deg,#58a6ff,#67e8f9)"></div></div><span class="n">134</span></div>
+      <div class="bar-row"><span class="lbl">panel</span><div class="bar-track"><div class="bar-fill" data-w="100" style="background:linear-gradient(90deg,#bc8cff,#67e8f9)"></div></div><span class="n">181</span></div>
+      <div class="bar-row"><span class="lbl">frames</span><div class="bar-track"><div class="bar-fill" data-w="53" style="background:linear-gradient(90deg,#58a6ff,#3fb950)"></div></div><span class="n">72</span></div>
+      <div class="bar-row"><span class="lbl">routes</span><div class="bar-track"><div class="bar-fill" data-w="50" style="background:linear-gradient(90deg,#3fb950,#67e8f9)"></div></div><span class="n">67</span></div>
+      <div class="bar-row"><span class="lbl">live · CDP</span><div class="bar-track"><div class="bar-fill" data-w="16" style="background:linear-gradient(90deg,#3fb950,#d29922)"></div></div><span class="n">22</span></div>
+      <div class="bar-row"><span class="lbl">e2e</span><div class="bar-track"><div class="bar-fill" data-w="11" style="background:linear-gradient(90deg,#d29922,#3fb950)"></div></div><span class="n">15</span></div>
+    </div>
+    <div class="tests-note rv">
+      <span class="big" data-count="491">0</span>
+      <b>Green, end to end.</b> The live suite reloads the fixture to kill every ref and asserts the next click heals once and still lands; it plants an <b>HttpOnly</b> cookie and asserts the value never reaches a tool result. A suite that can't fail is a suite that proves nothing — these can.
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="cta-band rv">
+    <h2>Read the code. Run the suites. Drive it yourself.</h2>
+    <p>Orderzx is open source — plugin scaffold, three engines, panel, protocol, smoke suites and the research notes that shaped it, all in one repo.</p>
+    <a class="btn btn-primary" href="https://github.com/canelaslorenzoenego-ai/Orderzx" target="_blank" rel="noopener">github.com/canelaslorenzoenego-ai/Orderzx ↗</a>
+    <a class="btn btn-ghost" href="#top">Back to top ↑</a>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>Orderzx · <code style="font-family:var(--mono);color:var(--cyan)">@dsh-community/dsh-browser</code></span>
+    <span class="sep">·</span>
+    <span>co-built by <a href="https://github.com/canelaslorenzoenego-ai" target="_blank" rel="noopener">canelaslorenzoenego-ai</a> &amp; an AI agent pair-programmer on Arena.ai</span>
+    <span class="sep">·</span>
+    <span>this page is a single self-contained HTML file — no network, no trackers, naturally.</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* nav shadow on scroll */
+  var nav = document.getElementById('nav');
+  var onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 8); };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* reveal on scroll */
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, { threshold: 0.14 });
+  document.querySelectorAll('.rv').forEach(function (n) { io.observe(n); });
+
+  /* count-up numbers */
+  var cio = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      cio.unobserve(e.target);
+      var el = e.target, target = parseInt(el.getAttribute('data-count'), 10), t0 = null;
+      var tick = function (t) {
+        if (t0 === null) t0 = t;
+        var p = Math.min((t - t0) / 1300, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(target * eased);
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  }, { threshold: 0.6 });
+  document.querySelectorAll('[data-count]').forEach(function (n) { cio.observe(n); });
+
+  /* test bars */
+  var bio = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      bio.unobserve(e.target);
+      e.target.querySelectorAll('.bar-fill').forEach(function (b, i) {
+        setTimeout(function () { b.style.width = b.getAttribute('data-w') + '%'; }, i * 110);
+      });
+    });
+  }, { threshold: 0.4 });
+  var bars = document.getElementById('bars');
+  if (bars) bio.observe(bars);
+
+  /* cursor-follow glow on cards */
+  document.querySelectorAll('.card').forEach(function (card) {
+    card.addEventListener('pointermove', function (ev) {
+      var r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', (ev.clientX - r.left) + 'px');
+      card.style.setProperty('--my', (ev.clientY - r.top) + 'px');
+    });
+  });
+
+  /* the 22 tools */
+  var TOOLS = ['browser_start','browser_stop','browser_status','browser_observe','browser_see','browser_click','browser_type','browser_press','browser_scroll','browser_navigate','browser_tabs','browser_fill_form','browser_extract','browser_wait','browser_evaluate','browser_challenge','browser_handoff','browser_takeover','browser_task','browser_act','browser_desktop_view','browser_cookies'];
+  var cloud = document.getElementById('toolcloud');
+  TOOLS.forEach(function (t) {
+    var s = document.createElement('span');
+    s.className = 'toolchip';
+    s.textContent = t;
+    cloud.appendChild(s);
+  });
+
+  /* terminal typing loop */
+  var SCRIPT = [
+    ['cmd', 'browser_start({ label: "researcher" })'],
+    ['ok',  '✓ session researcher · streaming · patchright stealth applied'],
+    ['cmd', 'browser_observe()'],
+    ['ok',  '✓ 42 elements · refs e1…e42 · no challenge detected'],
+    ['cmd', 'browser_see()'],
+    ['ok',  '✓ screenshot + 18 numbered marks · overlay flashed on your stream'],
+    ['cmd', 'browser_click({ mark: 7 })'],
+    ['ok',  '✓ clicked "Add to cart" · ripple painted on the live frames'],
+    ['cmd', 'browser_type({ ref: "e19", text: "••••••••" })'],
+    ['ok',  '✓ 8 chars · humanized 84–140 ms/key · value never echoed'],
+    ['cmd', 'browser_cookies({ action: "list" })'],
+    ['ok',  '✓ 6 cookies · metadata only · values never left the browser'],
+    ['warn', '⚠ challenge: turnstile · blocking'],
+    ['cmd', 'browser_handoff()'],
+    ['ok',  '✓ pointer → you · solve in-session · hand back when done'],
+  ];
+  var term = document.getElementById('term');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function line(cls, text, typed) {
+    var div = document.createElement('div');
+    div.className = 'line ' + cls;
+    term.appendChild(div);
+    if (!typed || reduce) { div.textContent = text; return Promise.resolve(); }
+    return new Promise(function (res) {
+      var i = 0;
+      var iv = setInterval(function () {
+        i += 2;
+        div.textContent = text.slice(0, i);
+        if (i >= text.length) { clearInterval(iv); res(); }
+      }, 14);
+    });
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  async function play() {
+    while (true) {
+      term.innerHTML = '';
+      for (var i = 0; i < SCRIPT.length; i++) {
+        var kind = SCRIPT[i][0], text = SCRIPT[i][1];
+        await line(kind, text, kind === 'cmd');
+        await wait(kind === 'cmd' ? 260 : 190);
+        while (term.children.length > 12) term.removeChild(term.firstChild);
+      }
+      await wait(4200);
+    }
+  }
+  play();
+})();
+</script>
+</body>
+</html>

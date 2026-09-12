@@ -26,6 +26,7 @@
 import type { EngineBrowser, EnginePage, EnginePosture, EngineProviderAdapter, LaunchOptions } from './types.js'
 import { EngineError } from './types.js'
 import { applyDesktopView, type EmulateState } from './emulate.js'
+import { ariaSnapshotWithRefs, countLeaves, parseAriaSnapshot } from './patchright.js'
 import { patchrightProvider } from './patchright.js'
 
 let endpoint: string | null = null
@@ -98,21 +99,68 @@ export const cdpProvider: EngineProviderAdapter = {
       // unremarkable, and it is the only way to know whether the desktop-view
       // toggle should also drop touch emulation. Stealth engines never probe.
       const emulateState: EmulateState = { probeTouch: true }
+      // Ref bookkeeping, same contract as the patchright engine: refs are ours,
+      // they live one snapshot generation, and navigation kills them. An
+      // attached browser is a real user browser — refs must fail LOUDLY on a
+      // stale generation, never click something the user since changed.
+      const refs = new Map<string, { selector: string }>()
+      const invalidateRefs = (): void => refs.clear()
+      let screencastDispose: (() => Promise<void>) | undefined
       const page: EnginePage = {
         id,
         url: () => raw.url() as string,
         title: async () => (await raw.title()) as string,
         viewport: () => (raw.viewportSize() as { width: number; height: number } | null) ?? { width: 1366, height: 768 },
-        goto: async (url, o) => raw.goto(url, { timeout: o?.timeoutMs ?? 30_000, waitUntil: o?.waitUntil ?? 'domcontentloaded' }),
+        goto: async (url, o) => {
+          invalidateRefs()
+          await raw.goto(url, { timeout: o?.timeoutMs ?? 30_000, waitUntil: o?.waitUntil ?? 'domcontentloaded' })
+        },
         navigate: async action => {
+          invalidateRefs()
           if (action === 'stop') return void (await raw.evaluate('window.stop()').catch(() => undefined))
           const m = action === 'back' ? 'goBack' : action === 'forward' ? 'goForward' : 'reload'
           await raw[m]({ waitUntil: 'domcontentloaded' })
         },
-        close: async () => raw.close().catch(() => undefined),
-        snapshot: async () => ({ url: raw.url(), title: await raw.title().catch(() => ''), nodes: [], nodeCount: 0, truncated: false }),
-        boxOf: async () => undefined,
-        capture: async o => new Uint8Array((await raw.screenshot({ type: o?.format === 'jpeg' ? 'jpeg' : 'png', caret: 'hide' })) as Buffer),
+        close: async () => {
+          await screencastDispose?.().catch(() => undefined)
+          screencastDispose = undefined
+          await raw.close().catch(() => undefined)
+        },
+        snapshot: async (opts) => {
+          const maxNodes = opts?.maxNodes ?? 400
+          const maxNameLength = opts?.maxNameLength ?? 120
+          invalidateRefs()
+          const text = await ariaSnapshotWithRefs(raw)
+          const nodes = parseAriaSnapshot(text, maxNodes, maxNameLength, (ref, entry) => {
+            refs.set(ref, entry)
+          })
+          return {
+            url: raw.url() as string,
+            title: await raw.title().catch(() => ''),
+            nodes,
+            nodeCount: nodes.length,
+            truncated: countLeaves(nodes) >= maxNodes,
+          }
+        },
+        boxOf: async ref => {
+          const entry = refs.get(ref)
+          if (!entry) {
+            throw new EngineError(
+              `stale element ref '${ref}' — the page navigated or was re-snapshotted. Call browser_observe again.`,
+              'E_STALE_REF',
+            )
+          }
+          const box = await raw.locator(entry.selector).first().boundingBox().catch(() => null)
+          return box ?? undefined
+        },
+        capture: async o => new Uint8Array((await raw.screenshot({
+          type: o?.format === 'jpeg' ? 'jpeg' : 'png',
+          quality: o?.format === 'jpeg' ? o.quality ?? 72 : undefined,
+          fullPage: o?.fullPage ?? false,
+          caret: 'hide',
+          animations: 'allow',
+          timeout: 8_000,
+        })) as Buffer),
         input: {
           pointerMove: async (x, y) => raw.mouse.move(x, y),
           pointerDown: async (x, y, b = 'left') => { await raw.mouse.move(x, y); await raw.mouse.down({ button: b }) },
@@ -132,7 +180,37 @@ export const cdpProvider: EngineProviderAdapter = {
         emulate: async opts => {
           await applyDesktopView(raw, emulateState, opts.desktopView)
         },
-        startScreencast: async () => () => Promise.resolve(),
+        // Real CDP screencast — the same Page.startScreencast loop the
+        // patchright engine runs. The previous no-op stub was a silent lie:
+        // the frame loop would report `screencast` as the effective tier while
+        // producing nothing but fallback captures.
+        startScreencast: async opts => {
+          await screencastDispose?.().catch(() => undefined)
+          const cdp = await raw.context().newCDPSession(raw)
+          let sequence = 0
+          await cdp.send('Page.startScreencast', { format: 'jpeg', quality: opts.quality, everyNthFrame: 1 })
+          const handler = (params: { data: string; metadata: { deviceWidth?: number; deviceHeight?: number } }): void => {
+            sequence += 1
+            opts.onFrame({
+              data: new Uint8Array(Buffer.from(params.data, 'base64')),
+              mime: 'image/jpeg',
+              width: params.metadata.deviceWidth ?? 0,
+              height: params.metadata.deviceHeight ?? 0,
+            })
+            void cdp.send('Page.screencastFrameAck', { sessionId: sequence }).catch(() => undefined)
+          }
+          cdp.on('Page.screencastFrame', handler)
+          screencastDispose = async () => {
+            cdp.off?.('Page.screencastFrame', handler)
+            await cdp.send('Page.stopScreencast').catch(() => undefined)
+            await cdp.detach().catch(() => undefined)
+          }
+          return () => {
+            const dispose = screencastDispose
+            screencastDispose = undefined
+            return dispose ? dispose() : Promise.resolve()
+          }
+        },
       }
       pages.set(id, page)
       return page

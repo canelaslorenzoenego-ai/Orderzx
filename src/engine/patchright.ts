@@ -394,7 +394,7 @@ class PatchrightPage implements EnginePage {
     // Playwright's aria snapshot gives us a role/name tree. We walk it into our
     // own node shape so refs are OURS (stable within a generation, invalidated
     // on navigation) rather than leaking a driver-internal identifier.
-    const raw: string = await this.raw.locator('body').ariaSnapshot({ ref: true }).catch(() => '')
+    const raw: string = await ariaSnapshotWithRefs(this.raw)
     const nodes = parseAriaSnapshot(raw, maxNodes, maxNameLength, (ref, entry) => {
       this.#refs.set(ref, entry)
     })
@@ -558,6 +558,25 @@ class PatchrightPage implements EnginePage {
  * a dependency for no benefit; an indent-aware line walker is enough and is
  * trivially testable.
  */
+/**
+ * The aria snapshot WITH element refs, across driver spellings.
+ *
+ * Playwright renamed this option between releases: newer drivers (1.6x, and
+ * the patchright forks that track them) take `{ mode: 'ai' }`; older ones take
+ * `{ ref: true }`. An unsupported option is silently IGNORED — the snapshot
+ * comes back clean and every ref-based tool would starve — so we try one
+ * spelling, check the output actually contains `[ref=`, and fall back to the
+ * other. Empty string means "this driver cannot do refs at all".
+ */
+export async function ariaSnapshotWithRefs(raw: any): Promise<string> {
+  const locator = raw.locator('body')
+  let text = (await locator.ariaSnapshot({ mode: 'ai' }).catch(() => '')) as string
+  if (!text.includes('[ref=')) {
+    text = (await locator.ariaSnapshot({ ref: true }).catch(() => '')) as string
+  }
+  return text.includes('[ref=') ? text : ''
+}
+
 export function parseAriaSnapshot(
   text: string,
   maxNodes: number,
@@ -612,7 +631,7 @@ function truncate(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`
 }
 
-function countLeaves(nodes: SnapshotNode[]): number {
+export function countLeaves(nodes: SnapshotNode[]): number {
   let total = 0
   for (const node of nodes) {
     total += 1

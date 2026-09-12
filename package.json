@@ -54,7 +54,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-frame-static-smoke.mjs && node scripts/dev-panel-smoke.mjs",
     "test:live": "DSH_BROWSER_LIVE=1 node scripts/dev-live-smoke.mjs",
-    "build:standalone": "tsdown --config tsdown.standalone.config.mjs && node scripts/build-standalone.mjs"
+    "build:standalone": "tsdown --config tsdown.standalone.config.mjs && node scripts/build-standalone.mjs",
+    "test:e2e": "DSH_BROWSER_LIVE=1 node scripts/dev-e2e-smoke.mjs"
   },
   "packageManager": "pnpm@10.12.1",
   "pnpm": {

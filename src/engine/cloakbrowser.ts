@@ -334,8 +334,8 @@ class CloakPage implements EnginePage {
   }
   async snapshot(opts?: { maxNodes?: number; maxNameLength?: number }): Promise<PageSnapshot> {
     const maxNodes = opts?.maxNodes ?? 400
-    const raw: string = await this.raw.locator('body').ariaSnapshot({ ref: true }).catch(() => '')
-    const { parseAriaSnapshot } = await import('./patchright.js')
+    const { parseAriaSnapshot, ariaSnapshotWithRefs } = await import('./patchright.js')
+    const raw: string = await ariaSnapshotWithRefs(this.raw)
     const nodes = parseAriaSnapshot(raw, maxNodes, opts?.maxNameLength ?? 120, (ref, entry) => {
       this.#refs.set(ref, entry)
     })

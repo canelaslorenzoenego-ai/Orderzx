@@ -78,9 +78,15 @@ const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`
 // ── host under test ─────────────────────────────────────────────────────────
 
 const events = []
+// Provider is overridable so CI sandboxes without a Chrome channel can attach
+// to a running browser instead:
+//   DSH_BROWSER_LIVE_PROVIDER=cdp DSH_BROWSER_LIVE_CDP=http://127.0.0.1:9222
+const LIVE_PROVIDER = process.env.DSH_BROWSER_LIVE_PROVIDER ?? 'patchright'
+const LIVE_CDP = process.env.DSH_BROWSER_LIVE_CDP ?? null
 const config = resolveConfig({
   engine: {
-    provider: 'patchright',
+    provider: LIVE_PROVIDER,
+    ...(LIVE_CDP ? { cdpEndpoint: LIVE_CDP } : {}),
     headless: process.env.DSH_BROWSER_LIVE_HEADLESS === '1',
     launchTimeoutMs: 90_000,
     idleTimeoutMs: 300_000,
@@ -91,6 +97,13 @@ const config = resolveConfig({
   // suite to the local fixture — it can never wander onto a third-party site.
   policy: { allowedDomains: ['127.0.0.1'] },
 })
+
+// The plugin entry normally does this from config in apply(); this suite builds
+// the host directly, so it must wire the endpoint itself.
+if (LIVE_PROVIDER === 'cdp') {
+  const { configureCdpEndpoint } = await import(pathToFileURL(join(root, 'lib', 'engine', 'cdp.js')).href)
+  configureCdpEndpoint(LIVE_CDP)
+}
 
 const access = new AccessController()
 const host = new BrowserHostController({ config, access, onEvent: event => events.push(event) })
@@ -131,7 +144,16 @@ try {
 
   const status1 = host.status(sessionId)
   step('host phase is streaming or ready', ['streaming', 'ready', 'navigating'].includes(status1?.phase), String(status1?.phase))
-  step('stealth posture reports humanize on', status1?.stealth?.humanize === true, JSON.stringify(status1?.stealth))
+  // The posture must report what the ENGINE actually does. Launch providers
+  // humanize input; the cdp provider attaches to a browser it does not own and
+  // honestly reports humanize:false plus the gap, which is the correct answer
+  // there — a posture that claimed humanization it does not perform would be
+  // the real failure.
+  const postureGaps = JSON.stringify(started?.stealth?.gaps ?? started?.posture?.gaps ?? [])
+  const humanizeOk = LIVE_PROVIDER === 'cdp'
+    ? status1?.stealth?.humanize === false && /humaniz/i.test(postureGaps)
+    : status1?.stealth?.humanize === true
+  step('stealth posture honestly reports the humanization actually in effect', humanizeOk, `humanize=${status1?.stealth?.humanize} gaps=${postureGaps.slice(0, 120)}`)
 
   // frames actually flow
   await new Promise(resolve => {
@@ -170,7 +192,7 @@ try {
     body: JSON.stringify({ session: sessionId }),
   })
   const grant = await grantRes.json()
-  step('grant mints stream + control over real HTTP', grantRes.status === 200 && grant.stream?.token && grant.control?.token, `status=${grantRes.status}`)
+  step('grant mints stream + control over real HTTP', grantRes.status === 200 && typeof grant.stream?.token === 'string' && typeof grant.control?.token === 'string', `status=${grantRes.status}`)
 
   const streamRes = await fetch(`${base}/_dsh/dsh-browser/stream?token=${encodeURIComponent(grant.stream.token)}`, { signal: AbortSignal.timeout(5000) }).catch(() => undefined)
   step('stream route opens multipart', streamRes?.status === 200 && /multipart/.test(streamRes?.headers.get('content-type') ?? ''), `${streamRes?.status} ${streamRes?.headers.get('content-type') ?? ''}`)
@@ -218,3 +240,6 @@ try {
 }
 
 finish()
+// The attached CDP browser and the aborted stream socket can keep handles alive
+// after teardown; a live suite that lingers turns green runs into CI timeouts.
+process.exit(process.exitCode ?? 0)

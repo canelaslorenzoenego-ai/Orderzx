@@ -21,7 +21,7 @@ import { cdpProvider } from './cdp.js'
 
 export * from './types.js'
 export * from './humanize.js'
-export { patchrightProvider, baseLaunchArgs, hardenedArgs, parseAriaSnapshot } from './patchright.js'
+export { patchrightProvider, baseLaunchArgs, hardenedArgs, parseAriaSnapshot, ariaSnapshotWithRefs, countLeaves } from './patchright.js'
 export { cloakbrowserProvider } from './cloakbrowser.js'
 export { cdpProvider } from './cdp.js'
 

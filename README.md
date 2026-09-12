@@ -130,6 +130,64 @@ Two supported setups, no LAN exposure either way:
 3. **Live** — the frame stream paints. The capsule hides; the panel shows frame
    tier, fps, suppression state, and who owns the pointer.
 
+## Try it in DSH web — exactly what happens
+
+1. **Install** (DSH ≥ `0.1.5-rc.2`, Node ≥ 24.11):
+
+   ```sh
+   dsh install @dsh-community/dsh-browser
+   npm i patchright && npx patchright install chrome   # in your profile dir
+   ```
+
+2. **Ask the agent for anything browser-shaped** — "open amazon and find…",
+   "check my flight status". The model calls `browser_start`.
+3. **Watch the chatbar**: a small CRT-monitor capsule **pops** above the
+   composer and animates through the real boot phases (`spinning-up →
+   warming → hardening → connecting`) — it is driven by host phase events,
+   never a fake timer.
+4. **~0.4 s after the capsule pops, the dashboard extends**: the panel docks
+   as a right-hand column (conversation slides over) or covers the screen on a
+   phone. Boot continues inside the panel.
+5. **The live browser appears**: real JPEG frames at 3–5 fps. When the model
+   acts, you see its ghost cursor travel the Bézier path, the click ripple,
+   the focus ring, scroll arrows, swipe trails, and a keystroke counter while
+   it types. When it calls `browser_see`, the numbered set-of-marks overlay
+   flashes on the stream — you see exactly what the model saw.
+6. **Grab the mouse any time**: *Take over* pauses the agent (its tools return
+   typed `pointer-owned` refusals — no fighting over one cursor); *Resume*
+   hands it back. A CAPTCHA flips this around: the agent pauses and the panel
+   asks **you** to solve it.
+
+If the dashboard does not extend, it is one of three things, in order of
+likelihood:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| No capsule at all | client bundle not mounted | check the DSH devtools console for `dsh-browser-client`; confirm the plugin's `dsh.client.inject` packages resolved |
+| Capsule sits at `spinning-up` | no engine available | `npm i patchright` **in the profile directory**, or set `engine.provider: cdp` + `engine.cdpEndpoint` and launch Chrome yourself with `--remote-debugging-port=9222` |
+| Capsule fine, panel never opens | another plugin owns the dock | the panel auto-falls back to an overlay — if even that is missing, check `browser_status` in the conversation for the phase it is stuck on |
+
+## Verified end-to-end
+
+Three layers of evidence, all runnable from this checkout:
+
+- **422 static assertions** (`pnpm test`, no browser): tools, routes over real
+  HTTP, frame transport, engine emulation, and the client bundle SSR'd in Node.
+- **17 live assertions** (`pnpm run test:live`, real Chrome): start → streaming
+  → frames → observe → ref click on a real DOM → signed stream/capture routes →
+  takeover refusals → dispose.
+- **15 e2e assertions** (`pnpm run test:e2e`, real Chrome): the exact DSH-web
+  chain — real host + real signed routes + **the real client bundle's** wire
+  functions, capsule poller, `autoOpenDecision` (the dashboard-extend trigger),
+  and boot state machine, through to real JPEG frame bytes on the stream and a
+  real tool click arriving as a gesture record on the interactions SSE, with
+  the real panel components rendered against the real host status.
+
+All three run green against system Chromium over CDP in a headless CI
+container — `DSH_BROWSER_LIVE_PROVIDER=cdp DSH_BROWSER_LIVE_CDP=http://127.0.0.1:9222`
+— so the attach path (including Chrome on Android) is a first-class, tested
+engine: real aria-snapshot refs, real `boxOf`, real CDP screencast.
+
 ## Takeover & handoff
 
 - **Takeover** (you → agent): click *Take over*; the host pauses agent input,
@@ -233,8 +291,14 @@ pnpm run build              # host (tsc) + client (tsdown → lib/client.js) + s
 pnpm run build:standalone   # just the standalone panel page
 pnpm run typecheck
 pnpm test                   # 4 static smoke suites, 422 assertions, no browser needed
-DSH_BROWSER_LIVE=1 pnpm run test:live   # against a real Chrome, opt-in
+pnpm run test:live          # 17 assertions against a real Chrome (opt-in)
+pnpm run test:e2e           # 15 assertions: real host + real routes + real client bundle
 ```
+
+The live and e2e suites accept `DSH_BROWSER_LIVE_PROVIDER=cdp` +
+`DSH_BROWSER_LIVE_CDP=http://127.0.0.1:9222` to attach to any running
+Chrome/Chromium instead of launching one — that is how CI (and an Android
+phone over adb) runs them.
 
 The smoke suites import the **compiled** `lib/*.js` and cover: tool refusals,
 JSON losslessness, approval gating, the set-of-marks pipeline and mark-alias

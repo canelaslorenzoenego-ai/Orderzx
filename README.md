@@ -2,14 +2,14 @@
 
 <div align="center">
 
-[![version](https://img.shields.io/badge/version-v0.1.0--rc.1-1f6feb?style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.1.0-rc.1)
+[![version](https://img.shields.io/badge/version-v0.2.0--rc.1-1f6feb?style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.2.0-rc.1)
 [![platform](https://img.shields.io/badge/platform-Chromium_150%2B_%C2%B7_3_engines-238636?style=flat-square)](#what-it-is)
-[![smoke tests](https://img.shields.io/badge/smoke_tests-494%2F494_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
+[![smoke tests](https://img.shields.io/badge/smoke_tests-550%2F550_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
 [![backend](https://img.shields.io/badge/backend-none_%C2%B7_on--loopback-9a6700?style=flat-square)](#security-posture)
 [![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
 [![ci](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml/badge.svg)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml)
 
-:globe_with_meridians: [Website](https://canelaslorenzoenego-ai.github.io/Orderzx/) · :arrow_down: [Download the release](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.1.0-rc.1) · :compass: [Architecture](#what-it-is) · :hammer_and_wrench: [Build from source](#install) · :question: [FAQ](#dual-use--read-this)
+:globe_with_meridians: [Website](https://canelaslorenzoenego-ai.github.io/Orderzx/) · :arrow_down: [Download the release](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.2.0-rc.1) · :compass: [Architecture](#what-it-is) · :hammer_and_wrench: [Build from source](#install) · :question: [FAQ](#dual-use--read-this)
 
 </div>
 
@@ -58,13 +58,33 @@ you:  "book me a table at X"
 
 ## What it is
 
-- **22 model-facing tools** — `browser_start/stop/status`, `browser_observe`,
+- **24 model-facing tools** — `browser_start/stop/status`, `browser_observe`,
   **`browser_see`** (set-of-marks screenshots — the model's eyes),
   **`browser_desktop_view`** (Chrome-for-Android "Request desktop site", for the
   agent too), `browser_act` (deterministic natural-language actions with a
   confidence gate), `browser_click/type/press/scroll/navigate/tabs/fill_form/extract/wait`,
   `browser_evaluate` (config-gated), `browser_challenge`, `browser_handoff`,
-  **`browser_cookies`**, `browser_takeover`, `browser_task` (stubbed pending `ctx.jobs`).
+  **`browser_cookies`**, **`browser_files`** (uploads fenced to the profile root,
+  downloads saved under it), **`browser_workflow`** (record a human demonstration,
+  replay it by name), `browser_takeover`, `browser_task` (stubbed pending `ctx.jobs`).
+- **Record once, replay by name** — take over, demonstrate, stop: the gestures
+  become a plain-JSON workflow under the browser profile. Replay is
+  identity-first (role/name/placeholder) with normalized-coordinate fallback and
+  humanized pacing. Typed secrets are **never stored** — password-shaped fields
+  become required `{{variables}}` you pass at replay, and a missing one refuses
+  the run instead of typing an empty password.
+- **Contracts, not vibes** — `browser_extract` accepts a JSON `schema` with your
+  structured `data` and validates it (exact violation paths + a deeper text pass
+  for repair); `browser_fill_form` reads every field back after filling and
+  reports `{expected, actual}` per field. `browser_observe` reports sites that
+  declare agent tools via WebMCP (`siteTools`), detect-only.
+- **MCP bridge** — `dsh-browser-mcp` speaks stdio JSON-RPC over the exact same
+  tool layer, so any MCP client can drive it. Zero tools added, zero policies
+  relaxed: on stdio there is no panel to hand off to, so a blocking challenge is
+  reported, never silently solved.
+- **Opt-in debug drawer** — arm the console+network tap from the panel and a
+  drawer renders both feeds; while armed, the posture says so plainly
+  (`stealth.debugTap`) because extra listeners are a detectable surface.
 - **Self-healing refs** — when a page re-renders and a ref dies mid-task,
   `browser_click`/`browser_type` re-snapshot once and look for the element's
   identity (role + accessible name) in the fresh tree. Exactly one match → the
@@ -218,9 +238,10 @@ likelihood:
 
 Three layers of evidence, all runnable from this checkout:
 
-- **422 static assertions** (`pnpm test`, no browser): tools, routes over real
-  HTTP, frame transport, engine emulation, and the client bundle SSR'd in Node.
-- **17 live assertions** (`pnpm run test:live`, real Chrome): start → streaming
+- **513 static assertions** (`pnpm test`, no browser): tools, routes over real
+  HTTP, frame transport, engine emulation, the MCP bridge spoken over a real
+  spawned child's stdio, and the client bundle SSR'd in Node.
+- **22 live assertions** (`pnpm run test:live`, real Chrome): start → streaming
   → frames → observe → ref click on a real DOM → signed stream/capture routes →
   takeover refusals → dispose.
 - **15 e2e assertions** (`pnpm run test:e2e`, real Chrome): the exact DSH-web
@@ -345,8 +366,8 @@ pnpm install
 pnpm run build              # host (tsc) + client (tsdown → lib/client.js) + standalone (→ lib/standalone.html)
 pnpm run build:standalone   # just the standalone panel page
 pnpm run typecheck
-pnpm test                   # 4 static smoke suites, 422 assertions, no browser needed
-pnpm run test:live          # 17 assertions against a real Chrome (opt-in)
+pnpm test                   # 5 static smoke suites, 513 assertions, no browser needed
+pnpm run test:live          # 22 assertions against a real Chrome (opt-in)
 pnpm run test:e2e           # 15 assertions: real host + real routes + real client bundle
 ```
 

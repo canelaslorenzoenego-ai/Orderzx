@@ -33,6 +33,9 @@ import { STREAM_BOUNDARY } from './protocol.js'
 import type { EnginePage } from './engine/types.js'
 
 /** Smallest legal frame interval. Below this we are just burning CPU and tells. */
+/** Cadence while a playing <video> is on screen: ~3 fps of real motion. */
+export const VIDEO_BOOST_INTERVAL_MS = 300
+
 const MIN_INTERVAL_MS = 40
 /** Never hold more than this in memory. */
 const MAX_FRAME_BYTES = 24 * 1024 * 1024
@@ -64,6 +67,8 @@ export interface FrameStats {
   captures: number
   failures: number
   suppressed: { active: boolean; reason: string | null }
+  /** True while a playing <video> holds the loop at boost cadence. */
+  boost: boolean
 }
 
 /**
@@ -145,6 +150,7 @@ export class FrameLoop {
       captures: this.#captures,
       failures: this.#failures,
       suppressed: { active: this.#suppressed, reason: this.#suppressionReason },
+      boost: this.#boosted,
     }
   }
 
@@ -243,6 +249,22 @@ export class FrameLoop {
 
   // ── tiers ─────────────────────────────────────────────────────────────────
 
+  #boostProbe: (() => boolean) | null = null
+  #boosted = false
+
+  /**
+   * Video-aware cadence: while the probe reports a playing <video>, the loop
+   * tightens to VIDEO_BOOST_INTERVAL_MS so a model watching a clip actually
+   * sees motion; the moment playback pauses it relaxes to the configured fps.
+   */
+  setBoostProbe(probe: (() => boolean) | null): void {
+    this.#boostProbe = probe
+  }
+
+  get boosted(): boolean {
+    return this.#boosted
+  }
+
   #startTimer(tick: () => Promise<void>): void {
     const interval = Math.max(MIN_INTERVAL_MS, Math.round(1000 / Math.max(0.5, this.config.maxFps)))
     const loop = async (): Promise<void> => {
@@ -253,7 +275,11 @@ export class FrameLoop {
         // Never let one bad capture kill the loop; onError already fired.
       }
       if (!this.#running) return
-      this.#timer = setTimeout(() => void loop(), interval)
+      this.#boosted = this.#boostProbe?.() === true
+      // Boost only ever TIGHTENS: a session already polling faster than the
+      // boost cadence keeps its own interval.
+      const wait = this.#boosted ? Math.min(interval, VIDEO_BOOST_INTERVAL_MS) : interval
+      this.#timer = setTimeout(() => void loop(), wait)
     }
     this.#timer = setTimeout(() => void loop(), interval)
   }

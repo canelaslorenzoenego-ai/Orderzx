@@ -571,6 +571,9 @@ const el = React.createElement
   const plainGlyph = renderToString(el(MonitorGlyph, { step: 'connecting', tone: 'live' }))
   step('without state flags the tube stays clean', !plainGlyph.includes('dsh-browser-spin') && !plainGlyph.includes('#f85149'), '')
   step('timeline rows carry tool-family glyphs', openDrawer.includes('data-toolicon="click"') && openDrawer.includes('data-toolicon="act"'), '')
+  const clipEntry = { ts: stamp, tool: 'browser_clip', summary: 'clip 4s @ 3fps — 12 frames', ok: true, clip: { id: 'clip-x1', manifest: '/_dsh/dsh-browser/capture?token=tok', seconds: 4, fps: 3, frames: 12 } }
+  const clipHtml = renderToString(el(TimelineDrawer, { entries: [clipEntry], open: true, onToggle: () => {} }))
+  step('clip rows carry the film glyph and an inline player shell', clipHtml.includes('data-toolicon="clip"') && clipHtml.includes('data-clip-id="clip-x1"') && clipHtml.includes('loading clip'), '')
 
 
     // debug drawer (console + network tap)

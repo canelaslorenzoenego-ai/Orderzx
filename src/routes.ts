@@ -177,7 +177,7 @@ export class Routes implements RouteHandlers {
     const file = await openVerifiedCapture(payload.path)
     if (!file) return this.#fail(res, 404, 'capture unavailable')
     res.writeHead(200, {
-      'Content-Type': payload.path.endsWith('.png') ? 'image/png' : 'image/jpeg',
+      'Content-Type': payload.path.endsWith('.png') ? 'image/png' : payload.path.endsWith('.json') ? 'application/json; charset=utf-8' : 'image/jpeg',
       'Content-Length': String(file.bytes.byteLength),
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',

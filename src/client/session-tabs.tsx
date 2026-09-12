@@ -13,8 +13,9 @@
  * @module @dsh-community/dsh-browser/client/session-tabs
  */
 
+import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { ActionEntry, SessionSummary } from '../protocol.js'
+import type { ActionEntry, ClipRef, SessionSummary } from '../protocol.js'
 
 export interface SessionTabStripProps {
   sessions: SessionSummary[]
@@ -216,12 +217,15 @@ export function TimelineDrawer(props: TimelineDrawerProps): ReactNode {
             <div style={emptyTimelineStyles}>no actions yet — the agent’s steps will appear here</div>
           ) : (
             entries.map((entry, index) => (
-              <div key={`${entry.ts}-${index}`} style={entryRowStyles}>
-                <span style={entryDotStyles(entry)} aria-hidden="true" />
-                <span style={toolIconStyles} data-toolicon={entry.tool.replace('browser_', '')} aria-hidden="true">{toolIcon(entry.tool)}</span>
-                <span style={entryToolStyles}>{entry.tool.replace('browser_', '')}</span>
-                <span style={entrySummaryStyles}>{entry.summary}</span>
-                <span style={entryTimeStyles}>{relativeTime(entry.ts)}</span>
+              <div key={`${entry.ts}-${index}`}>
+                <div style={entryRowStyles}>
+                  <span style={entryDotStyles(entry)} aria-hidden="true" />
+                  <span style={toolIconStyles} data-toolicon={entry.tool.replace('browser_', '')} aria-hidden="true">{toolIcon(entry.tool)}</span>
+                  <span style={entryToolStyles}>{entry.tool.replace('browser_', '')}</span>
+                  <span style={entrySummaryStyles}>{entry.summary}</span>
+                  <span style={entryTimeStyles}>{relativeTime(entry.ts)}</span>
+                </div>
+                {entry.clip ? <ClipPlayer clip={entry.clip} /> : null}
               </div>
             ))
           )}
@@ -330,6 +334,70 @@ const toolIconStyles: CSSProperties = {
  * A 10px glyph per tool family, so the timeline reads as pictures first and
  * words second. Strokes only — they inherit the row's muted color.
  */
+/**
+ * Inline flipbook for a delivered clip: fetches the signed manifest once,
+ * then cycles its frames at the recorded fps. SSR renders the shell only —
+ * the fetch lives in an effect, so Node never touches the network.
+ */
+function ClipPlayer(props: { clip: ClipRef }): ReactNode {
+  const [manifest, setManifest] = useState<{ fps?: number; frames?: { url?: string }[] } | null>(null)
+  const [index, setIndex] = useState(0)
+  const [playing, setPlaying] = useState(true)
+  useEffect(() => {
+    let dead = false
+    void fetch(props.clip.manifest)
+      .then(response => (response.ok ? response.json() : null))
+      .then((parsed: unknown) => {
+        if (dead || typeof parsed !== 'object' || parsed === null) return
+        const frames = (parsed as { frames?: unknown }).frames
+        if (Array.isArray(frames)) setManifest(parsed as { fps?: number; frames?: { url?: string }[] })
+      })
+      .catch(() => undefined)
+    return () => { dead = true }
+  }, [props.clip.manifest])
+  const frames = (manifest?.frames ?? []).filter((frame): frame is { url: string } => typeof frame?.url === 'string')
+  useEffect(() => {
+    if (!playing || frames.length === 0) return
+    const fps = Math.min(12, Math.max(1, Math.round(manifest?.fps ?? props.clip.fps ?? 3)))
+    const timer = setInterval(() => setIndex(i => (i + 1) % frames.length), Math.round(1000 / fps))
+    return () => clearInterval(timer)
+  }, [playing, frames.length, manifest?.fps, props.clip.fps])
+  const current = frames[Math.min(index, Math.max(0, frames.length - 1))]
+  return (
+    <div style={clipPlayerStyles} data-clip-id={props.clip.id}>
+      {current ? (
+        <img src={current.url} alt={`clip frame ${Math.min(index, frames.length - 1) + 1} of ${frames.length}`} style={clipFrameStyles} />
+      ) : (
+        <div style={clipLoadingStyles}>loading clip…</div>
+      )}
+      <div style={clipBarStyles}>
+        <button type="button" style={clipButtonStyles} onClick={() => setPlaying(value => !value)} aria-label={playing ? 'pause clip' : 'play clip'}>
+          {playing ? '❚❚' : '▶'}
+        </button>
+        <span style={clipMetaStyles}>
+          {frames.length > 0 ? `${Math.min(index, frames.length - 1) + 1}/${frames.length}` : '—'} · {props.clip.seconds}s @ {props.clip.fps}fps
+        </span>
+      </div>
+    </div>
+  )
+}
+
+const clipPlayerStyles: CSSProperties = {
+  margin: '2px 0 6px 22px',
+  border: '1px solid rgba(103,232,249,0.28)',
+  borderRadius: 8,
+  overflow: 'hidden',
+  background: 'rgba(1,4,9,0.72)',
+}
+const clipFrameStyles: CSSProperties = { display: 'block', width: '100%', maxHeight: 220, objectFit: 'contain', background: '#010409' }
+const clipLoadingStyles: CSSProperties = { padding: '14px 12px', fontSize: 11, color: '#8b949e' }
+const clipBarStyles: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderTop: '1px solid rgba(103,232,249,0.18)' }
+const clipButtonStyles: CSSProperties = {
+  border: '1px solid rgba(103,232,249,0.35)', background: 'rgba(103,232,249,0.08)', color: '#67e8f9',
+  borderRadius: 5, fontSize: 9, lineHeight: '14px', padding: '1px 6px', cursor: 'pointer',
+}
+const clipMetaStyles: CSSProperties = { fontSize: 10, color: '#8b949e', fontVariantNumeric: 'tabular-nums' }
+
 function toolIcon(tool: string): ReactNode {
   const t = tool.replace('browser_', '')
   const common = { width: 10, height: 10, viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
@@ -344,6 +412,8 @@ function toolIcon(tool: string): ReactNode {
   if (t === 'workflow') return <svg {...common}><circle cx="6" cy="6" r="4.4" /><circle cx="6" cy="6" r="1.6" fill="currentColor" stroke="none" /></svg>
   if (t === 'task') return <svg {...common}><circle cx="6" cy="6" r="2" /><path d="M6 1.6v1.2M6 9.2v1.2M10.4 6H9.2M2.8 6H1.6M9.1 2.9l-.9.9M3.8 8.2l-.9.9M9.1 9.1l-.9-.9M3.8 3.8l-.9-.9" /></svg>
   if (t === 'challenge' || t === 'handoff' || t === 'takeover') return <svg {...common}><path d="M4 7V3.4a1 1 0 0 1 2 0V6l2.6.7c.9.2 1.4 1.1 1.3 2l-.3 1.6a2 2 0 0 1-2 1.7H5.6a2.2 2.2 0 0 1-1.8-.9L2.4 9.2a.9.9 0 0 1 1.4-1.1L4 8.6Z" /></svg>
+  if (t === 'clip') return <svg {...common}><rect x="1.5" y="2.5" width="9" height="7" rx="1" /><path d="M1.5 4.5h9M3.5 2.5v2M6 2.5v2M8.5 2.5v2" /></svg>
+  if (t === 'transcript') return <svg {...common}><path d="M3 3h6M3 5.5h6M3 8h4" /></svg>
   if (t === 'cookies') return <svg {...common}><circle cx="6" cy="6" r="4.4" /><path d="M4.4 5h.01M7.4 4.4h.01M6.4 7.6h.01" /></svg>
   return <svg {...common}><circle cx="6" cy="6" r="1.6" fill="currentColor" stroke="none" /></svg>
 }

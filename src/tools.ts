@@ -28,8 +28,9 @@ import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from './json-value.js'
 import type { BrowserHostController } from './host.js'
 import { probeEngine } from './engine/index.js'
-import { FRAME_SOURCES, TOOL_NAMES } from './protocol.js'
-import type { FrameSource } from './protocol.js'
+import { CAPTURE_ROUTE_PREFIX, FRAME_SOURCES, TOOL_NAMES } from './protocol.js'
+import type { ClipRef, FrameSource } from './protocol.js'
+import { saveClipManifest } from './capture-store.js'
 import { redactConfig } from './config.js'
 import type { ChallengePipeline, Verdict } from './challenge/pipeline.js'
 import { sessionBoundWarning } from './challenge/pipeline.js'
@@ -107,13 +108,14 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
   }
 
   /** One line on the session timeline. Never include typed text or full URLs with query strings. */
-  function acted(sessionId: string, tool: string, summary: string, ok = true, refused?: string): void {
+  function acted(sessionId: string, tool: string, summary: string, ok = true, refused?: string, clip?: ClipRef): void {
     host.recordAction(sessionId, {
       ts: Date.now(),
       tool,
       summary: summary.slice(0, 120),
       ok,
       ...(refused ? { refused } : {}),
+      ...(clip ? { clip } : {}),
     })
   }
 
@@ -1740,6 +1742,160 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     },
   })
 
+  // ── media: clips + transcripts ────────────────────────────────────────────
+
+  const browserClip = defineTool({
+    name: TOOL_NAMES.clip,
+    description:
+      'Record a short video clip of the live page by sampling real frames at `fps` for `seconds`, then DELIVER it: '
+      + 'the clip lands in the session timeline (the dashboard replays it inline) and the result carries a `chatLine`. '
+      + 'WHEN THE USER ASKS TO SEE, WATCH, SEND, SHARE OR SAVE A VIDEO — or asks what happens in one — call this tool '
+      + 'and include the returned `chatLine` VERBATIM in your reply: that string is how the clip reaches the chat. '
+      + 'Frames are genuine page captures (0o600 on disk, signed URLs with a 1h TTL), so logged-in content stays '
+      + 'local. Prefer it over describing a video from a single screenshot; for long videos sample again at the '
+      + 'timestamps that matter (`browser_press`/`browser_act` can seek first).',
+    parameters: {
+      session: sessionSchema,
+      seconds: { type: 'number', description: 'Clip length 1–10 seconds (default 4).' },
+      fps: { type: 'number', description: 'Sample rate 1–6 fps (default 3).' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          clipId: { type: 'string' },
+          frames: { type: 'number', description: 'Frames actually sampled.' },
+          fps: { type: 'number' },
+          seconds: { type: 'number' },
+          title: { type: 'string' },
+          url: { type: 'string', description: 'Page URL the clip was taken from (query stripped).' },
+          manifest: { type: 'string', description: 'Signed manifest URL — the replayable artifact.' },
+          delivered: { type: 'array', items: { type: 'string' }, description: "Where the clip went: ['session', 'chat-line']." },
+          chatLine: { type: 'string', description: 'INCLUDE VERBATIM IN YOUR REPLY when the user asked for the video.' },
+          message: { type: 'string' },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args, exec) {
+      const resolved = resolveTarget(host, args.session)
+      if (!resolved.ok) return refusalValue(resolved) as never
+      const seconds = Math.min(10, Math.max(1, Math.round(Number(args.seconds ?? 4))))
+      const fps = Math.min(6, Math.max(1, Math.round(Number(args.fps ?? 3))))
+      const total = Math.max(2, seconds * fps)
+      const frames: { path: string; bytes: number; url: string }[] = []
+      for (let i = 0; i < total; i += 1) {
+        if (exec.signal?.aborted) break
+        const data = await resolved.page.capture({ format: 'jpeg', quality: host.config.frames.jpegQuality }).catch(() => undefined)
+        if (data && data.byteLength > 0 && data.byteLength <= 4_000_000) {
+          const saved = await host.saveCapture(resolved.sessionId, data, 'jpg').catch(() => undefined)
+          if (saved) frames.push({ path: saved.path, bytes: data.byteLength, url: `${CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(saved.token)}` })
+        }
+        if (i < total - 1) await sleep(Math.round(1000 / fps), exec.signal).catch(() => undefined)
+      }
+      if (frames.length < 2) {
+        return { ok: false, message: `only sampled ${frames.length} frame(s) — is the browser started and the page visible?` } as never
+      }
+      const meta = await resolved.page
+        .evaluateIsolated<{ title?: string; url?: string }>(`(() => ({ title: document.title || '', url: location.origin + location.pathname }))()`)
+        .catch(() => undefined)
+      const title = typeof meta?.title === 'string' ? meta.title.slice(0, 120) : ''
+      const pageUrl = typeof meta?.url === 'string' ? meta.url.slice(0, 200) : ''
+      const clipId = `clip-${Date.now().toString(36)}-${frames.length}`
+      const manifestPath = await saveClipManifest(resolved.sessionId, {
+        id: clipId,
+        sessionId: resolved.sessionId,
+        at: Date.now(),
+        fps,
+        seconds,
+        title,
+        url: pageUrl,
+        frames,
+      })
+      const grant = await host.signPath(manifestPath, { ttlMs: 60 * 60 * 1000 })
+      const manifestUrl = `${CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(grant.token)}`
+      const ref: ClipRef = { id: clipId, manifest: manifestUrl, seconds, fps, frames: frames.length }
+      acted(resolved.sessionId, TOOL_NAMES.clip, `clip ${seconds}s @ ${fps}fps — ${frames.length} frames${title ? ` · ${title}` : ''}`, true, undefined, ref)
+      const chatLine = `🎬 clip ${seconds}s @ ${fps}fps (${frames.length} frames)${title ? ` — ${title}` : ''} · replay: ${manifestUrl}`
+      return {
+        ok: true,
+        clipId,
+        frames: frames.length,
+        fps,
+        seconds,
+        title,
+        url: pageUrl,
+        manifest: manifestUrl,
+        delivered: ['session', 'chat-line'],
+        chatLine,
+      } as never
+    },
+  })
+
+  const browserTranscript = defineTool({
+    name: TOOL_NAMES.transcript,
+    description:
+      'Read what a video SAYS without hearing it: pulls the YouTube transcript panel when open, else chapter '
+      + 'markers, else caption-track metadata + page text (og:description and visible lines). Use it to answer '
+      + '"what is this video about / what did they say" cheaply, and pair with `browser_clip` when the user wants '
+      + 'the visuals too. If `source` is `caption-tracks`, the panel is closed: open it with `browser_act` '
+      + '("Show transcript") and call again for full lines.',
+    parameters: {
+      session: sessionSchema,
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          source: { type: 'string', enum: ['transcript-panel', 'chapters', 'caption-tracks', 'page-text'] },
+          title: { type: 'string' },
+          lines: { type: 'array', items: { type: 'string' } },
+          langs: { type: 'array', items: { type: 'string' }, description: 'Available caption track names (YouTube).' },
+          note: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      const resolved = resolveTarget(host, args.session)
+      if (!resolved.ok) return refusalValue(resolved) as never
+      const script = `(() => {
+        const clean = t => (t || '').split('\n').map(x => x.trim()).filter(Boolean)
+        const seg = [...document.querySelectorAll('ytd-transcript-segment-renderer')]
+        if (seg.length) return { source: 'transcript-panel', title: document.title || '', lines: seg.map(el => (el.innerText || '').replace(/\n+/g, ' ').trim()).filter(Boolean) }
+        let tracks = []
+        try {
+          const p = window.ytInitialPlayerResponse
+          const list = p && p.captions && p.captions.playerCaptionsTracklistRenderer && p.captions.playerCaptionsTracklistRenderer.captionTracks
+          if (Array.isArray(list)) tracks = list.map(t => (t.name && (t.name.simpleText || (t.name.runs || []).map(r => r.text).join(''))) || t.languageCode || 'track')
+        } catch {}
+        const chapters = [...document.querySelectorAll('ytd-macro-markers-list-item-renderer')].map(el => (el.innerText || '').replace(/\n+/g, ' ').trim()).filter(Boolean)
+        if (chapters.length) return { source: 'chapters', title: document.title || '', lines: chapters, langs: tracks }
+        const desc = document.querySelector('meta[property="og:description"], meta[name="description"]')
+        const body = clean(document.body ? document.body.innerText : '').slice(0, 60)
+        const lines = desc ? clean(desc.getAttribute('content')).concat(body) : body
+        return { source: tracks.length ? 'caption-tracks' : 'page-text', title: document.title || '', lines, langs: tracks }
+      })()`
+      const raw = await resolved.page.evaluateIsolated<{ source?: string; title?: string; lines?: unknown; langs?: unknown }>(script).catch(() => undefined)
+      const lines = Array.isArray(raw?.lines) ? raw.lines.filter((l): l is string => typeof l === 'string').slice(0, 200) : []
+      const source = raw?.source === 'transcript-panel' || raw?.source === 'chapters' || raw?.source === 'caption-tracks' || raw?.source === 'page-text' ? raw.source : 'page-text'
+      if (lines.length === 0) return { ok: false, source, message: 'no readable text on this page' } as never
+      const langs = Array.isArray(raw?.langs) ? raw.langs.filter((l): l is string => typeof l === 'string') : []
+      acted(resolved.sessionId, TOOL_NAMES.transcript, `transcript via ${source} — ${lines.length} line(s)`)
+      return {
+        ok: true,
+        source,
+        title: typeof raw?.title === 'string' ? raw.title.slice(0, 160) : '',
+        lines,
+        ...(langs.length > 0 ? { langs } : {}),
+        ...(source === 'caption-tracks' ? { note: 'transcript panel is closed — open it with browser_act ("Show transcript") and call again for full lines' } : {}),
+      } as never
+    },
+  })
+
   // Keyed by WIRE NAME, not by local variable: consumers (the host entry's
   // effect labels, the smoke suites, third-party composition) all think in
   // `browser_click`, never `browserClick`.
@@ -1750,6 +1906,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     browserCookies,
     browserFiles,
     browserWorkflow,
+    browserClip,
+    browserTranscript,
   ]
   return Object.fromEntries(all.map(tool => [tool.name, tool]))
 }

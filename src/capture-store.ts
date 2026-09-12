@@ -37,6 +37,43 @@ export async function saveCapture(sessionId: string, sequence: number, data: Uin
   return { path, bytes: data.byteLength, at: Date.now() }
 }
 
+/** A recorded clip: ordered frame paths plus the playback envelope. */
+export interface ClipManifest {
+  id: string
+  sessionId: string
+  at: number
+  fps: number
+  seconds: number
+  title: string
+  url: string
+  frames: { path: string; bytes: number; url?: string }[]
+}
+
+/**
+ * Write a clip manifest beside the session's captures (same 0o600 policy —
+ * a clip of a logged-in page is as credential-adjacent as a screenshot).
+ */
+export async function saveClipManifest(sessionId: string, manifest: ClipManifest): Promise<string> {
+  const dir = join(captureDir(), sessionId, 'clips')
+  await mkdir(dir, { recursive: true, mode: 0o700 })
+  const path = join(dir, `${manifest.id}.json`)
+  await writeFile(path, JSON.stringify(manifest), { mode: 0o600 })
+  return path
+}
+
+export async function readClipManifest(path: string): Promise<ClipManifest | undefined> {
+  try {
+    const { readFile } = await import('node:fs/promises')
+    const parsed: unknown = JSON.parse(await readFile(path, 'utf8'))
+    if (typeof parsed !== 'object' || parsed === null) return undefined
+    const manifest = parsed as ClipManifest
+    if (typeof manifest.id !== 'string' || !Array.isArray(manifest.frames)) return undefined
+    return manifest
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Delete all but the newest `keep` captures for a session.
  *

@@ -4,7 +4,7 @@
 
 [![version](https://img.shields.io/badge/version-v0.2.0--rc.1-1f6feb?style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.2.0-rc.1)
 [![platform](https://img.shields.io/badge/platform-Chromium_150%2B_%C2%B7_3_engines-238636?style=flat-square)](#what-it-is)
-[![smoke tests](https://img.shields.io/badge/smoke_tests-576%2F576_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
+[![smoke tests](https://img.shields.io/badge/smoke_tests-592%2F592_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
 [![ci](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml/badge.svg)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml)
 [![backend](https://img.shields.io/badge/backend-none_%C2%B7_on--loopback-9a6700?style=flat-square)](#security-posture)
 [![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
@@ -66,7 +66,7 @@ you:  "book me a table at X"
   confidence gate, and a deterministic identity-verified act cache), `browser_click/type/press/scroll/navigate/tabs/fill_form/extract/wait`,
   `browser_evaluate` (config-gated), `browser_challenge`, `browser_handoff`,
   **`browser_cookies`**, **`browser_files`** (uploads fenced to the profile root,
-  downloads saved under it), **`browser_workflow`** (record a human demonstration,
+  downloads saved under it), **`browser_clip`** (sample real frames into a replayable clip that is delivered to the session AND handed back as a chat-ready line), **`browser_transcript`** (read what a video says without hearing it), **`browser_workflow`** (record a human demonstration,
   replay it by name), `browser_takeover`, **`browser_task`** (saved workflows as
   cancellable background jobs with live progress).
 - **Record once, replay by name** — take over, demonstrate, stop: the gestures
@@ -240,10 +240,10 @@ likelihood:
 
 Three layers of evidence, all runnable from this checkout:
 
-- **539 static assertions** (`pnpm test`, no browser): tools, routes over real
+- **549 static assertions** (`pnpm test`, no browser): tools, routes over real
   HTTP, frame transport, engine emulation, the MCP bridge spoken over a real
   spawned child's stdio, and the client bundle SSR'd in Node.
-- **22 live assertions** (`pnpm run test:live`, real Chrome): start → streaming
+- **28 live assertions** (`pnpm run test:live`, real Chrome): start → streaming
   → frames → observe → ref click on a real DOM → signed stream/capture routes →
   takeover refusals → dispose.
 - **15 e2e assertions** (`pnpm run test:e2e`, real Chrome): the exact DSH-web
@@ -368,8 +368,8 @@ pnpm install
 pnpm run build              # host (tsc) + client (tsdown → lib/client.js) + standalone (→ lib/standalone.html)
 pnpm run build:standalone   # just the standalone panel page
 pnpm run typecheck
-pnpm test                   # 5 static smoke suites, 539 assertions, no browser needed
-pnpm run test:live          # 22 assertions against a real Chrome (opt-in)
+pnpm test                   # 5 static smoke suites, 549 assertions, no browser needed
+pnpm run test:live          # 28 assertions against a real Chrome (opt-in)
 pnpm run test:e2e           # 15 assertions: real host + real routes + real client bundle
 ```
 

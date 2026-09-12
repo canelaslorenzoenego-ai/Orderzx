@@ -243,6 +243,13 @@ state.takeover = false
   const good = await access.signCaptureToken(goodPath)
   const goodRes = await req(`${protocol.CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(good.token)}`)
   step('capture inside the cache dir serves image/png', goodRes.status === 200 && goodRes.headers.get('content-type') === 'image/png', `got ${goodRes.status} ${goodRes.headers.get('content-type')}`)
+  const { saveClipManifest } = await import(pathToFileURL(join(root, 'lib', 'capture-store.js')).href)
+  const manifestPath = await saveClipManifest('smoke-session', { id: 'clip-route1', sessionId: 'smoke-session', at: Date.now(), fps: 3, seconds: 2, title: 't', url: 'u', frames: [] })
+  const manifestGrant = await access.signCaptureToken(manifestPath)
+  const manifestRes = await req(`${protocol.CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(manifestGrant.token)}`)
+  step('a signed clip manifest serves application/json through the capture route', manifestRes.status === 200 && (manifestRes.headers.get('content-type') ?? '').includes('application/json'), `got ${manifestRes.status} ${manifestRes.headers.get('content-type')}`)
+  const manifestBad = await req(`${protocol.CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(manifestGrant.token.slice(0, -2))}xx`)
+  step('a tampered manifest token is rejected', manifestBad.status === 403, `got ${manifestBad.status}`)
   step('capture response is no-store', goodRes.headers.get('cache-control') === 'no-store', goodRes.headers.get('cache-control') ?? '')
 
   const escape = await access.signCaptureToken(join(dir, '..', '..', '..', 'etc', 'passwd'))

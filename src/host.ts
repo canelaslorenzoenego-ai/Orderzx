@@ -346,6 +346,21 @@ export class BrowserHostController {
     // Start streaming BEFORE the first navigation so the panel is live when the
     // page begins to paint — that is the moment worth watching.
     await frames.start(() => this.#activePage(id), options.signal)
+    // Video-aware cadence: a cheap 1.5s probe asks the page whether a <video>
+    // is actually playing; while it is, the frame loop tightens to boost
+    // cadence so a model (or a human in the dashboard) sees motion, not slides.
+    frames.setBoostProbe(() => this.#videoPlaying.get(id) === true)
+    this.#videoProbes.set(id, setInterval(() => {
+      const page = this.#activePage(id)
+      if (!page || typeof page.evaluateIsolated !== 'function') {
+        this.#videoPlaying.set(id, false)
+        return
+      }
+      void page
+        .evaluateIsolated<boolean>(`(() => { const v = document.querySelector('video'); return !!v && !v.paused && !v.ended && v.readyState >= 2; })()`)
+        .then(playing => { this.#videoPlaying.set(id, playing === true) })
+        .catch(() => { this.#videoPlaying.set(id, false) })
+    }, 1500))
     this.#setPhase(id, 'streaming')
 
     if (options.url) {
@@ -617,6 +632,9 @@ export class BrowserHostController {
   }
 
   /** Append a tool action to the session timeline (bounded, newest last). */
+  #videoProbes = new Map<string, ReturnType<typeof setInterval>>()
+  #videoPlaying = new Map<string, boolean>()
+
   recordAction(id: string, entry: ActionEntry): void {
     const session = this.#sessions.get(id)
     if (!session) return
@@ -1163,6 +1181,14 @@ export class BrowserHostController {
    * Captures live under `<tmp>/dsh-browser/captures/<sessionId>/<n>.jpg` so the
    * route's containment check has exactly one root to defend.
    */
+  /**
+   * Sign any path under the capture root — clip manifests ride the same
+   * verified-capture route as frames, with the same TTL semantics.
+   */
+  async signPath(path: string, options: { ttlMs?: number } = {}): Promise<{ token: string; expiresAt: number }> {
+    return this.access.signCaptureToken(path, options)
+  }
+
   async saveCapture(id: string, data: Uint8Array, ext: 'jpg' | 'png' = 'jpg'): Promise<{ path: string; token: string; expiresAt: number }> {
     const session = this.#sessions.get(id)
     if (!session) throw new EngineError(`no such session: ${id}`, 'E_NO_SESSION')
@@ -1263,6 +1289,7 @@ export class BrowserHostController {
       frames: {
         source: stats.effective,
         fps: stats.fps,
+        boost: stats.boost,
         lastSequence: stats.lastSequence,
         lastAt: stats.lastAt,
         bytes: stats.bytes,
@@ -1381,6 +1408,10 @@ export class BrowserHostController {
   }
 
   async #teardown(session: HostSession, reason: string): Promise<void> {
+    const probe = this.#videoProbes.get(session.id)
+    if (probe) { clearInterval(probe); this.#videoProbes.delete(session.id) }
+    this.#videoPlaying.delete(session.id)
+
     session.handoffResolve?.('abandoned')
     await session.frames.stop().catch(() => undefined)
     session.frameSubscribers.clear()

@@ -29,6 +29,8 @@ if (!existsSync(join(root, 'lib', 'tools.js'))) {
 const { createBrowserTools } = await import(pathToFileURL(join(root, 'lib', 'tools.js')).href)
 const { resolveConfig } = await import(pathToFileURL(join(root, 'lib', 'config.js')).href)
 const { TOOL_NAMES } = await import(pathToFileURL(join(root, 'lib', 'protocol.js')).href)
+const { readClipManifest } = await import(pathToFileURL(join(root, 'lib', 'capture-store.js')).href)
+const { captureDir } = await import(pathToFileURL(join(root, 'lib', 'access.js')).href)
 const { selectMarks, buildOverlayScript, CLEANUP_SCRIPT, MAX_MARKS, resolveMark, setMarks, clearMarks } = await import(pathToFileURL(join(root, 'lib', 'marks.js')).href)
 
 const SESSION = 'sess-0123456789abcdef'
@@ -76,6 +78,7 @@ function makeFakePage(options = {}) {
       ;(scripts).push(String(script))
       if (String(script).includes('current-password')) return options.secret ?? false
       if (String(script).includes('modelContext')) return options.siteTools ?? false
+      if (String(script).includes('ytd-transcript-segment-renderer')) return { source: 'transcript-panel', title: 'Fixture Video', lines: ['hello', 'world'], langs: ['English'] }
       if (String(script).includes('innerText')) return options.bodyText ?? 'The quick brown fox.'
       return undefined // the challenge probe sees a clean page
     },
@@ -155,6 +158,7 @@ function makeStubHost(options = {}) {
     stop: record('stop', { ok: true }),
     navigate: record('navigate', { ok: true, url: 'https://example.com/next', title: 'Next' }),
     saveCapture: record('saveCapture', { path: join(tmpdir(), 'dsh-browser', 'captures', 'smoke.jpg'), token: 'tok', expiresAt: Date.now() + 60_000 }),
+    signPath: record('signPath', { token: 'clip-manifest-tok', expiresAt: Date.now() + 3_600_000 }),
     recordChallenge: record('recordChallenge', undefined),
     setDesktopView: record('setDesktopView', { ok: true }),
     syncDesktopView: record('syncDesktopView', undefined),
@@ -905,5 +909,23 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   step('cancel reaches the host with the job id', cancelled?.ok === true && host.calls.some(c => c.name === 'cancelJob' && c.args[1] === 'j1ab23cd'))
   const listed = await run(tools, TOOL_NAMES.task, { action: 'list' })
   step('list returns the session job records', listed?.ok === true && listed.jobs?.[0]?.workflow === 'checkout-demo', JSON.stringify(listed).slice(0, 140))
+}
+// ── C9: clips deliver to session + chat; transcripts read without ears ──────
+{
+  const { host, tools } = build()
+  const clip = await run(tools, TOOL_NAMES.clip, { seconds: 2, fps: 3 })
+  step('browser_clip samples real frames from the live page', clip?.ok === true && clip.frames >= 5 && clip.fps === 3 && clip.seconds === 2, JSON.stringify(clip).slice(0, 160))
+  step('the clip result carries a chat-ready line pointing at the signed manifest', typeof clip?.chatLine === 'string' && clip.chatLine.includes('') && clip.chatLine.includes(clip.manifest) && clip.manifest.includes('token='), '')
+  step('the clip is delivered to the session timeline with a replay ref', host.history.some(h => h.entry.tool === TOOL_NAMES.clip && h.entry.clip?.id === clip.clipId && typeof h.entry.clip.manifest === 'string' && h.entry.clip.frames === clip.frames), '')
+  const manifestPath = join(captureDir(), SESSION, 'clips', `${clip.clipId}.json`)
+  const onDisk = await readClipManifest(manifestPath)
+  step('the manifest lands on disk with a signed url per frame', !!onDisk && onDisk.frames.length === clip.frames && onDisk.frames.every(f => typeof f.url === 'string' && f.url.includes('token=')), manifestPath)
+  const clamped = await run(tools, TOOL_NAMES.clip, { seconds: 99, fps: 99 })
+  step('clip bounds clamp to 10s @ 6fps', clamped?.ok === true && clamped.seconds === 10 && clamped.fps === 6, JSON.stringify({ s: clamped?.seconds, f: clamped?.fps }))
+  const { tools: dryTools } = build({}, { noSession: true })
+  const refused = await run(dryTools, TOOL_NAMES.clip, {})
+  step('clip without a browser is refused like every other tool', refused?.ok === false && refused.refused === 'no-session', JSON.stringify(refused).slice(0, 120))
+  const transcript = await run(tools, TOOL_NAMES.transcript, {})
+  step('browser_transcript reads the open transcript panel', transcript?.ok === true && transcript.source === 'transcript-panel' && transcript.lines.join('|') === 'hello|world' && transcript.title === 'Fixture Video', JSON.stringify(transcript).slice(0, 160))
 }
 finish()

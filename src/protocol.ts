@@ -84,6 +84,8 @@ export const TOOL_NAMES = {
   cookies: 'browser_cookies',
   files: 'browser_files',
   workflow: 'browser_workflow',
+  clip: 'browser_clip',
+  transcript: 'browser_transcript',
 } as const
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES]
@@ -339,6 +341,16 @@ export interface CookieMeta {
 }
 
 /** One tool action, for the timeline drawer. Never contains typed text. */
+/** A recorded clip delivered to the session: the timeline drawer replays it. */
+export interface ClipRef {
+  id: string
+  /** Signed manifest URL (frames carry their own signed URLs inside). */
+  manifest: string
+  seconds: number
+  fps: number
+  frames: number
+}
+
 export interface ActionEntry {
   ts: number
   tool: string
@@ -346,6 +358,8 @@ export interface ActionEntry {
   summary: string
   ok: boolean
   refused?: string
+  /** Set on `browser_clip` entries so the drawer can replay the clip inline. */
+  clip?: ClipRef
 }
 
 export interface BrowserStatus {
@@ -389,6 +403,8 @@ export interface BrowserStatus {
      * capability for it. Null until the first capture lands.
      */
     lastCapturePath: string | null
+    /** True while a playing <video> holds the frame loop at boost cadence. */
+    boost?: boolean
   }
   /** Non-null while a human owns the pointer. */
   takeover?: { since: number; by: 'user' | 'agent-handoff' }

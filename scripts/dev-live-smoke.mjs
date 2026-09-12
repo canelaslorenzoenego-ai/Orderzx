@@ -54,6 +54,30 @@ const { createBrowserTools } = await import(pathToFileURL(join(root, 'lib', 'too
 
 const clicked = { count: 0 }
 const fixture = http.createServer((req, res) => {
+  if (req.url === '/video.html') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.end(`<!doctype html><html><head><title>Video Fixture</title></head><body>
+<canvas id="c" width="320" height="180"></canvas>
+<video id="v" muted autoplay playsinline style="width:320px;height:180px"></video>
+<script>
+  const canvas = document.getElementById('c')
+  const ctx = canvas.getContext('2d')
+  let t = 0
+  setInterval(() => {
+    t += 1
+    ctx.fillStyle = 'hsl(' + ((t * 7) % 360) + ' 70% 45%)'
+    ctx.fillRect(0, 0, 320, 180)
+    ctx.fillStyle = '#fff'
+    ctx.font = '28px sans-serif'
+    ctx.fillText('frame ' + t, 20, 100)
+  }, 100)
+  const video = document.getElementById('v')
+  video.srcObject = canvas.captureStream(10)
+  video.play().catch(() => {})
+</script>
+</body></html>`)
+    return
+  }
   if (req.url === '/click' && req.method === 'POST') {
     clicked.count += 1
     res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -256,6 +280,34 @@ try {
   step('endTakeover succeeds', ended?.ok === true, JSON.stringify(ended).slice(0, 160))
   const afterTakeover = await runTool('browser_status', { session: sessionId })
   step('status works again after resume', afterTakeover?.ok !== false, JSON.stringify(afterTakeover).slice(0, 160))
+
+  // 5b. C9: video-aware boost + clip delivery against a genuinely playing page
+  // the section-4 web server was closed after the grant/capture steps; the
+  // manifest rides the same verified capture route, so stand up a fresh one.
+  const clipWeb = createMiniWebServer()
+  const clipUnmount = mountRoutes(clipWeb, new Routes(host, access))
+  await new Promise(resolve => clipWeb.server.listen(0, '127.0.0.1', resolve))
+  const clipBase = `http://127.0.0.1:${clipWeb.server.address().port}`
+  const toVideo = await runTool('browser_navigate', { session: sessionId, url: `${fixtureUrl}video.html` })
+  step('navigate reaches the video fixture', toVideo?.ok === true, JSON.stringify(toVideo).slice(0, 140))
+  await new Promise(resolve => setTimeout(resolve, 2600)) // probe cadence is 1.5s
+  const boosted = host.status(sessionId)?.frames
+  step('a playing <video> puts the frame loop in boost cadence', boosted?.boost === true, JSON.stringify(boosted))
+  const clip = await runTool('browser_clip', { session: sessionId, seconds: 2, fps: 2 })
+  step('browser_clip records the playing page and delivers it to session + chat-line', clip?.ok === true && clip.frames >= 3 && clip.delivered?.includes('session') === true && clip.delivered?.includes('chat-line') === true && typeof clip.chatLine === 'string', JSON.stringify(clip).slice(0, 200))
+  // manifest/frame urls are origin-relative (the panel fetches them same-origin);
+  // Node's fetch needs the base prepended.
+  const manifestRes = await fetch(`${clipBase}${clip.manifest}`).catch(() => undefined)
+  const manifestJson = await manifestRes?.json().catch(() => undefined)
+  step('the signed manifest url serves the clip as json', manifestRes?.status === 200 && /application\/json/.test(manifestRes.headers.get('content-type') ?? '') && Array.isArray(manifestJson?.frames) && manifestJson.frames.length === clip.frames, `${manifestRes?.status} ${manifestRes?.headers.get('content-type') ?? ''}`)
+  const firstFrame = await fetch(`${clipBase}${manifestJson?.frames?.[0]?.url}`).catch(() => undefined)
+  step('clip frames serve real jpeg bytes through their signed urls', firstFrame?.status === 200 && /image\//.test(firstFrame.headers.get('content-type') ?? ''), `${firstFrame?.status}`)
+  const away = await runTool('browser_navigate', { session: sessionId, url: fixtureUrl })
+  await new Promise(resolve => setTimeout(resolve, 2600))
+  const calm = host.status(sessionId)?.frames
+  step('boost relaxes once playback is gone', away?.ok === true && calm?.boost === false, JSON.stringify(calm))
+  clipUnmount()
+  clipWeb.server.close()
 
   // 6. phase events were emitted for the logger
   step('host emitted lifecycle events', events.length > 0, `${events.length} events`)

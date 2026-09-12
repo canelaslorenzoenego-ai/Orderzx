@@ -964,15 +964,17 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
 
 // ── C12: readers tolerate yesterday's and tomorrow's payloads ───────────────
 {
-  const legacy = { id: 'clip-legacy', sessionId: SESSION, at: 1, fps: 2, seconds: 2, title: '', url: '', frames: [{ path: '/tmp/a.jpg', bytes: 5 }] }
-  const parsedLegacy = await readClipManifest(join(captureDir(), SESSION, 'clips', 'clip-legacy.json')).catch(() => undefined)
+  const legacyId = `clip-legacy-${Date.now().toString(36)}`
+  const legacy = { id: legacyId, sessionId: SESSION, at: 1, fps: 2, seconds: 2, title: '', url: '', frames: [{ path: '/tmp/a.jpg', bytes: 5 }] }
+  const parsedLegacy = await readClipManifest(join(captureDir(), SESSION, 'clips', `${legacyId}.json`)).catch(() => undefined)
   const { saveClipManifest } = await import(pathToFileURL(join(root, 'lib', 'capture-store.js')).href)
   await saveClipManifest(SESSION, legacy)
-  const again = await readClipManifest(join(captureDir(), SESSION, 'clips', 'clip-legacy.json'))
+  const again = await readClipManifest(join(captureDir(), SESSION, 'clips', `${legacyId}.json`))
   step('a pre-C9 manifest (no events, no timestamps) still parses', parsedLegacy === undefined && again?.frames?.length === 1 && again.events === undefined, JSON.stringify(again))
-  const future = { ...legacy, id: 'clip-future', frames: [{ path: '/tmp/a.jpg', bytes: 5, t: 9, hologram: true }], events: [], quantum: 'field' }
+  const futureId = `clip-future-${Date.now().toString(36)}`
+  const future = { ...legacy, id: futureId, frames: [{ path: '/tmp/a.jpg', bytes: 5, t: 9, hologram: true }], events: [], quantum: 'field' }
   await saveClipManifest(SESSION, future)
-  const ahead = await readClipManifest(join(captureDir(), SESSION, 'clips', 'clip-future.json'))
-  step('unknown future fields are ignored, known ones survive', ahead?.id === 'clip-future' && ahead.frames[0].t === 9 && ahead.quantum === undefined || ahead?.frames?.[0]?.t === 9, JSON.stringify(ahead))
+  const ahead = await readClipManifest(join(captureDir(), SESSION, 'clips', `${futureId}.json`))
+  step('unknown future fields are ignored, known ones survive', ahead?.id === futureId && ahead.frames[0].t === 9 && ahead.quantum === undefined || ahead?.frames?.[0]?.t === 9, JSON.stringify(ahead))
 }
 finish()

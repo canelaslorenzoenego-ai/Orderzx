@@ -230,6 +230,94 @@ export function TimelineDrawer(props: TimelineDrawerProps): ReactNode {
   )
 }
 
+// ── debug drawer ────────────────────────────────────────────────────────────
+
+export interface DebugDrawerProps {
+  debug?: {
+    armed: boolean
+    supported: boolean
+    console: Array<{ ts: number; level: string; text: string }>
+    network: Array<{ ts: number; method: string; url: string; status?: number; resourceType?: string; failure?: string }>
+  }
+  open: boolean
+  onToggle(): void
+}
+
+/**
+ * Console + network feed, newest first — the panel's devtools-lite.
+ *
+ * Opt-in like everything else here: nothing is captured until the user arms
+ * the tap, and while it is armed the drawer says out loud that extra
+ * listeners are attached (a posture gap the user chose with eyes open).
+ */
+export function DebugDrawer(props: DebugDrawerProps): ReactNode {
+  const debug = props.debug
+  const console = [...(debug?.console ?? [])].reverse().slice(0, 12)
+  const network = [...(debug?.network ?? [])].reverse().slice(0, 12)
+  const count = (debug?.console?.length ?? 0) + (debug?.network?.length ?? 0)
+  return (
+    <div style={drawerStyles}>
+      <button type="button" style={drawerToggleStyles} onClick={props.onToggle} aria-expanded={props.open}>
+        <span style={{ transform: props.open ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 140ms ease' }}>›</span>
+        {' '}console + network
+        {count > 0 ? <span style={countBadgeStyles}>{count}</span> : null}
+      </button>
+      {props.open ? (
+        <div style={drawerBodyStyles}>
+          {!debug?.armed ? (
+            <div style={emptyTimelineStyles}>tap disarmed — press “Debug tap” below to start capturing console + network</div>
+          ) : !debug.supported ? (
+            <div style={emptyTimelineStyles}>this engine does not expose console/network taps</div>
+          ) : (
+            <>
+              <div style={debugSectionStyles}>posture gap: console + network listeners are attached while the tap is armed</div>
+              {console.length === 0 && network.length === 0 ? (
+                <div style={emptyTimelineStyles}>nothing captured yet — interact with the page</div>
+              ) : null}
+              {console.length > 0 ? <div style={debugSectionStyles}>console</div> : null}
+              {console.map((entry, index) => (
+                <div key={`c-${entry.ts}-${index}`} style={entryRowStyles}>
+                  <span style={debugLevelDotStyles(entry.level)} aria-hidden="true" />
+                  <span style={entryToolStyles}>{entry.level}</span>
+                  <span style={entrySummaryStyles}>{entry.text}</span>
+                  <span style={entryTimeStyles}>{relativeTime(entry.ts)}</span>
+                </div>
+              ))}
+              {network.length > 0 ? <div style={debugSectionStyles}>network</div> : null}
+              {network.map((entry, index) => (
+                <div key={`n-${entry.ts}-${index}`} style={entryRowStyles}>
+                  <span style={debugStatusDotStyles(entry.status, entry.failure)} aria-hidden="true" />
+                  <span style={entryToolStyles}>{typeof entry.status === 'number' ? String(entry.status) : '—'} {entry.method}</span>
+                  <span style={entrySummaryStyles}>{entry.failure ? `${entry.url} (${entry.failure})` : entry.url}</span>
+                  <span style={entryTimeStyles}>{relativeTime(entry.ts)}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+const debugSectionStyles: CSSProperties = {
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'var(--dsw-text-muted, #8b949e)',
+  padding: '4px 2px 2px',
+}
+
+function debugLevelDotStyles(level: string): CSSProperties {
+  const color = level === 'error' ? '#f85149' : level === 'warning' || level === 'warn' ? '#d29922' : '#58a6ff'
+  return { flex: '0 0 auto', width: 6, height: 6, borderRadius: '50%', background: color }
+}
+
+function debugStatusDotStyles(status: number | undefined, failure: string | undefined): CSSProperties {
+  const color = failure || status === 0 || (typeof status === 'number' && status >= 400) ? '#f85149' : '#3fb950'
+  return { flex: '0 0 auto', width: 6, height: 6, borderRadius: '50%', background: color }
+}
+
 function entryDotStyles(entry: ActionEntry): CSSProperties {
   const color = entry.ok ? '#3fb950' : entry.refused === 'policy' ? '#f85149' : '#d29922'
   return { flex: '0 0 auto', width: 6, height: 6, borderRadius: '50%', background: color }

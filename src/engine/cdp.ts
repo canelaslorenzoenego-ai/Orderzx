@@ -23,9 +23,9 @@
  * @module @dsh-community/dsh-browser/engine/cdp
  */
 
-import type { EngineBrowser, EnginePage, EnginePosture, EngineProviderAdapter, LaunchOptions } from './types.js'
+import type { DebugTapEvent, EngineBrowser, EnginePage, EnginePosture, EngineProviderAdapter, LaunchOptions } from './types.js'
 import { EngineError } from './types.js'
-import { applyDesktopView, type EmulateState } from './emulate.js'
+import { applyDesktopView, attachDebugTap, type EmulateState } from './emulate.js'
 import { ariaSnapshotWithRefs, countLeaves, parseAriaSnapshot } from './patchright.js'
 import { patchrightProvider } from './patchright.js'
 
@@ -152,6 +152,7 @@ export const cdpProvider: EngineProviderAdapter = {
           if (!entry) return undefined
           return (await raw.locator(entry.selector).first().inputValue().catch(() => undefined)) ?? undefined
         },
+        tapDebug: (sink: (event: DebugTapEvent) => void) => attachDebugTap(raw, sink),
         downloadByClick: async (ref, destPath, timeoutMs) => {
           const entry = refs.get(ref)
           if (!entry) throw new EngineError(`stale element ref '${ref}' — call browser_observe again`, 'E_STALE_REF')

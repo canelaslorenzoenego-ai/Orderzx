@@ -76,6 +76,7 @@ const host = {
   resolveRef: ref => (ref === undefined || ref === SESSION ? SESSION : undefined),
   switchActive: record('switchActive', () => ({ ok: true, active: SESSION })),
   setDesktopView: record('setDesktopView', () => ({ ok: true })),
+  setDebugTap: record('setDebugTap', () => ({ ok: true })),
   start: record('start', () => ({ ok: true, session: SESSION, label: null, phase: 'streaming', posture: { provider: 'patchright', humanize: true, applied: [], gaps: [] } })),
   stop: record('stop', () => ({ ok: true })),
   interactionsSince: () => ({ records: state.interactions, resync: false, latest: state.interactions.length }),
@@ -367,6 +368,18 @@ state.takeover = false
   })
   step('set-desktop-view accepts reload:false', noReload.status === 200, `got ${noReload.status}`)
   step('reload:false passes through to the host', state.calls.filter(c => c.name === 'setDesktopView').pop()?.args?.[2]?.reload === false)
+
+  // debug tap (console + network drawer)
+  const tap = await fetch(`${base}${protocol.SESSION_ROUTE_PATH}?token=${drive.control.token}`, {
+    method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'set-debug-tap', enabled: true }),
+  })
+  step('set-debug-tap with drive scope succeeds', tap.status === 200, `got ${tap.status}`)
+  const tapCall = state.calls.filter(c => c.name === 'setDebugTap').pop()
+  step('the tap flag reaches the host', tapCall?.args?.[1] === true, JSON.stringify(tapCall?.args))
+  const tapView = await fetch(`${base}${protocol.SESSION_ROUTE_PATH}?token=${viewGrant.control.token}`, {
+    method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'set-debug-tap', enabled: true }),
+  })
+  step('a view token cannot arm the tap (drive scope required)', tapView.status === 403, `got ${tapView.status}`)
 
   // switch-session
   const switched = await fetch(`${base}${protocol.SESSION_ROUTE_PATH}?token=${drive.control.token}`, {

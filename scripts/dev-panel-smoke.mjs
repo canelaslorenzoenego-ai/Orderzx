@@ -552,6 +552,35 @@ const el = React.createElement
   // Tool names render with the `browser_` prefix stripped, so assert on that.
   step('the open drawer lists actions newest-first', openDrawer.indexOf('>act<') !== -1 && openDrawer.indexOf('>act<') < openDrawer.indexOf('>click<'), `act@${openDrawer.indexOf('>act<')} click@${openDrawer.indexOf('>click<')}`)
   step('timeline entries render their summaries', openDrawer.includes('click e12'))
+
+  // debug drawer (console + network tap)
+  const { DebugDrawer } = client
+  const closedDebug = renderToString(el(DebugDrawer, { debug: undefined, open: false, onToggle() {} }))
+  step('the debug drawer renders its toggle closed', closedDebug.includes('console + network') && !closedDebug.includes('tap disarmed'))
+  const disarmed = renderToString(el(DebugDrawer, { debug: { armed: false, supported: true, console: [], network: [] }, open: true, onToggle() {} }))
+  step('open but disarmed says how to arm it', disarmed.includes('tap disarmed'))
+  const unsupported = renderToString(el(DebugDrawer, { debug: { armed: true, supported: false, console: [], network: [] }, open: true, onToggle() {} }))
+  step('an engine without taps is reported honestly', unsupported.includes('does not expose'))
+  const live = renderToString(el(DebugDrawer, {
+    debug: {
+      armed: true,
+      supported: true,
+      console: [
+        { ts: Date.now() - 60_000, level: 'error', text: 'Uncaught TypeError: x is not a function' },
+        { ts: Date.now() - 1000, level: 'log', text: 'checkout debug' },
+      ],
+      network: [
+        { ts: Date.now() - 900, method: 'POST', url: 'https://shop.test/api/cart', status: 500, resourceType: 'fetch' },
+        { ts: Date.now() - 800, method: 'GET', url: 'https://shop.test/logo.png', status: 200, resourceType: 'image' },
+      ],
+    },
+    open: true,
+    onToggle() {},
+  }))
+  step('arming the tap surfaces the posture gap out loud', live.includes('posture gap'))
+  step('console entries render level + text newest-first', live.indexOf('checkout debug') !== -1 && live.indexOf('checkout debug') < live.indexOf('Uncaught TypeError'), '')
+  step('network entries render status + method', /500[\s\S]{0,40}?POST/.test(live) && /200[\s\S]{0,40}?GET/.test(live), '')
+  step('the toggle badge counts both feeds', live.includes('>4<'), '')
 }
 
 // ── home tab (the first-open start page) ────────────────────────────────────

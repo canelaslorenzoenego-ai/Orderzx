@@ -1,3 +1,4 @@
+import type { DebugTapEvent } from './types.js'
 /**
  * Desktop-view emulation for Chromium-backed pages.
  *
@@ -176,4 +177,57 @@ export async function applyDesktopView(
   }
   if (state.originalViewport) await raw.setViewportSize(state.originalViewport).catch(() => undefined)
   state.desktopActive = false
+}
+
+
+// ── debug tap ────────────────────────────────────────────────────────────────
+
+/**
+ * Attach console + network listeners to a Playwright-shaped raw page.
+ *
+ * Shared by every engine because all three wrap the same event API. Bounded
+ * and defensive: a tap is a debug aid and must never throw into the page's
+ * event loop or grow without limit.
+ */
+export function attachDebugTap(raw: any, sink: (event: DebugTapEvent) => void): () => void {
+  const onConsole = (msg: any): void => {
+    try {
+      sink({ type: 'console', level: String(msg?.type?.() ?? 'log'), text: String(msg?.text?.() ?? '').slice(0, 500) })
+    } catch { /* a broken tap must not break the page */ }
+  }
+  const onResponse = (res: any): void => {
+    try {
+      const req = res?.request?.()
+      const status = res?.status?.()
+      const resourceType = req?.resourceType?.()
+      sink({
+        type: 'network',
+        method: String(req?.method?.() ?? 'GET'),
+        url: String(res?.url?.() ?? '').slice(0, 200),
+        ...(typeof status === 'number' ? { status } : {}),
+        ...(typeof resourceType === 'string' ? { resourceType } : {}),
+      })
+    } catch { /* a broken tap must not break the page */ }
+  }
+  const onFailed = (req: any): void => {
+    try {
+      const resourceType = req?.resourceType?.()
+      sink({
+        type: 'network',
+        method: String(req?.method?.() ?? 'GET'),
+        url: String(req?.url?.() ?? '').slice(0, 200),
+        status: 0,
+        ...(typeof resourceType === 'string' ? { resourceType } : {}),
+        failure: String(req?.failure?.()?.errorText ?? 'failed').slice(0, 120),
+      })
+    } catch { /* a broken tap must not break the page */ }
+  }
+  raw.on('console', onConsole)
+  raw.on('response', onResponse)
+  raw.on('requestfailed', onFailed)
+  return () => {
+    try { raw.off?.('console', onConsole) } catch { /* page already closed */ }
+    try { raw.off?.('response', onResponse) } catch { /* page already closed */ }
+    try { raw.off?.('requestfailed', onFailed) } catch { /* page already closed */ }
+  }
 }

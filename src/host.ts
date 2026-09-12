@@ -72,6 +72,17 @@ export interface HostSession {
   history: ActionEntry[]
   /** Desktop UA + wide viewport emulation, toggled from the panel. */
   desktopView: boolean
+  /**
+   * Opt-in console+network tap. Buffers are ring-capped and cleared on
+   * disarm — the drawer is a debug aid, not a surveillance log.
+   */
+  debug: {
+    armed: boolean
+    supported: boolean
+    console: Array<{ ts: number; level: string; text: string }>
+    network: Array<{ ts: number; method: string; url: string; status?: number; resourceType?: string; failure?: string }>
+    taps: Map<string, () => void>
+  }
   /** Last known agent pointer, normalized — seeds the overlay cursor on open. */
   lastPointer: { x: number; y: number } | null
 }
@@ -272,6 +283,7 @@ export class BrowserHostController {
       interactions: new InteractionTrace(),
       history: [],
       desktopView: false,
+      debug: { armed: false, supported: false, console: [], network: [], taps: new Map() },
       lastPointer: null,
     }
     this.#sessions.set(id, session)
@@ -545,6 +557,28 @@ export class BrowserHostController {
    * is exactly the mutation a widget is scoring for, and the honest move is to
    * let the human finish the handoff first.
    */
+  /**
+   * Arm or disarm the console+network tap for the panel's debug drawer.
+   *
+   * Opt-in on purpose: the listeners are extra CDP-adjacent traffic and a
+   * posture gap, so they exist only while the user asks, and disarming wipes
+   * the buffers. Taps attach lazily in #streamStatus so new tabs are covered.
+   */
+  async setDebugTap(id: string, enabled: boolean): Promise<ActionResult> {
+    const session = this.#sessions.get(id)
+    if (!session) return { ok: false, refused: 'no-session', message: `no such session: ${id}` }
+    session.debug.armed = enabled
+    if (!enabled) {
+      for (const off of session.debug.taps.values()) {
+        try { off() } catch { /* page already closed */ }
+      }
+      session.debug.taps.clear()
+      session.debug.console = []
+      session.debug.network = []
+    }
+    return { ok: true }
+  }
+
   async setDesktopView(id: string, enabled: boolean, opts: { reload?: boolean } = {}): Promise<ActionResult> {
     const session = this.#sessions.get(id)
     if (!session) return { ok: false, refused: 'no-session', message: `no such session: ${id}` }
@@ -841,6 +875,33 @@ export class BrowserHostController {
     const page = session.browser.activePage()
     const stats: FrameStats = session.frames.stats()
     const posture = session.browser.posture()
+    if (session.debug.armed) {
+      // Lazily attach taps to every live page and prune the dead ones — new
+      // tabs arm on the next status poll, which the panel makes continuously.
+      const live = new Set<string>()
+      for (const p of session.browser.pages()) {
+        live.add(p.id)
+        if (typeof p.tapDebug !== 'function') continue
+        session.debug.supported = true
+        if (session.debug.taps.has(p.id)) continue
+        const off = p.tapDebug(event => {
+          if (event.type === 'console') {
+            session.debug.console.push({ ts: Date.now(), level: event.level, text: event.text })
+            if (session.debug.console.length > 200) session.debug.console.splice(0, session.debug.console.length - 200)
+          } else {
+            session.debug.network.push({ ts: Date.now(), method: event.method, url: event.url, status: event.status, resourceType: event.resourceType, failure: event.failure })
+            if (session.debug.network.length > 200) session.debug.network.splice(0, session.debug.network.length - 200)
+          }
+        })
+        session.debug.taps.set(p.id, off)
+      }
+      for (const [pid, off] of [...session.debug.taps]) {
+        if (!live.has(pid)) {
+          try { off() } catch { /* page already closed */ }
+          session.debug.taps.delete(pid)
+        }
+      }
+    }
     return {
       phase: session.phase,
       sessions: this.listSessions(),
@@ -881,6 +942,13 @@ export class BrowserHostController {
         fingerprintProfile: posture.fingerprintProfile,
         proxy: posture.proxy,
         frameSuppression: { active: stats.suppressed.active, reason: stats.suppressed.reason },
+        debugTap: session.debug.armed,
+      },
+      debug: {
+        armed: session.debug.armed,
+        supported: session.debug.supported,
+        console: session.debug.console.slice(-100),
+        network: session.debug.network.slice(-100),
       },
       error: session.error ?? undefined,
     }

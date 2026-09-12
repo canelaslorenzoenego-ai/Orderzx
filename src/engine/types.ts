@@ -57,6 +57,11 @@ export interface TypeOptions {
   insert?: boolean
 }
 
+/** One console message or network response seen by a page's debug tap. */
+export type DebugTapEvent =
+  | { type: 'console'; level: string; text: string }
+  | { type: 'network'; method: string; url: string; status?: number; resourceType?: string; failure?: string }
+
 /** One page/tab. */
 export interface EnginePage {
   readonly id: string
@@ -86,6 +91,12 @@ export interface EnginePage {
   inputValue(ref: string): Promise<string | undefined>
   /** Click a ref and save the download it triggers. Returns size + suggested filename. */
   downloadByClick(ref: string, destPath: string, timeoutMs: number): Promise<{ bytes: number; suggested: string }>
+  /**
+   * Opt-in console+network tap for the panel's debug drawer. Returns an
+   * unsubscribe. Deliberately optional — while armed it is a posture gap
+   * (extra listeners on the page) and the host reports it as such.
+   */
+  tapDebug?(sink: (event: DebugTapEvent) => void): () => void
 
   /** Raw PNG/JPEG of the viewport. The `screenshot` frame tier is built on this. */
   capture(opts?: { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean }): Promise<Uint8Array>

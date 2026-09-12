@@ -300,6 +300,7 @@ export type SessionMessage =
    * routinely hide the controls the agent needs behind app-store interstitials.
    */
   | { kind: 'set-desktop-view'; enabled: boolean; reload?: boolean }
+  | { kind: 'set-debug-tap'; enabled: boolean }
   /**
    * Start a browser from the panel's home tab, no model turn required.
    * Drive scope only: this launches a real process on the user's machine and
@@ -397,6 +398,16 @@ export interface BrowserStatus {
     proxy: string | null
     /** Suppressed frame transport, and why. */
     frameSuppression: { active: boolean; reason: string | null }
+    /** Console+network tap armed — extra listeners on the page; a posture gap the user opted into. */
+    debugTap: boolean
+  }
+  /** Opt-in console+network feed for the panel's debug drawer. Ring-capped by the host. */
+  debug?: {
+    armed: boolean
+    /** False until an engine that supports taps is attached. */
+    supported: boolean
+    console: Array<{ ts: number; level: string; text: string }>
+    network: Array<{ ts: number; method: string; url: string; status?: number; resourceType?: string; failure?: string }>
   }
   error?: { message: string; code?: string }
 }

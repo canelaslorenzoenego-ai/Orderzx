@@ -41,9 +41,10 @@ import type {
   PageSnapshot,
   SnapshotNode,
   TypeOptions,
+  DebugTapEvent,
 } from './types.js'
 import { EngineError } from './types.js'
-import { applyDesktopView, type EmulateState } from './emulate.js'
+import { applyDesktopView, attachDebugTap, type EmulateState } from './emulate.js'
 import {
   PRESETS,
   clickHoldMs,
@@ -433,6 +434,10 @@ class PatchrightPage implements EnginePage {
     const entry = this.#refs.get(ref)
     if (!entry) return undefined
     return (await this.raw.locator(entry.selector).first().inputValue().catch(() => undefined)) ?? undefined
+  }
+
+  tapDebug(sink: (event: DebugTapEvent) => void): () => void {
+    return attachDebugTap(this.raw, sink)
   }
 
   async downloadByClick(ref: string, destPath: string, timeoutMs: number): Promise<{ bytes: number; suggested: string }> {

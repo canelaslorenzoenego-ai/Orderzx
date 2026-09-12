@@ -25,7 +25,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { SessionTabStrip, TimelineDrawer } from './session-tabs.js'
+import { DebugDrawer, SessionTabStrip, TimelineDrawer } from './session-tabs.js'
 import { HomeTab } from './home-tab.js'
 import type { CSSProperties, ReactNode, PointerEvent as ReactPointerEvent } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -253,6 +253,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
    */
   const [view, setView] = useState<{ kind: 'auto' } | { kind: 'home' } | { kind: 'session'; id: string }>({ kind: 'auto' })
   const [timelineOpen, setTimelineOpen] = useState(false)
+  const [debugOpen, setDebugOpen] = useState(false)
   const [launching, setLaunching] = useState(false)
   const [narrow, setNarrow] = useState(false)
 
@@ -480,6 +481,17 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     })
   }, [fetcher, controlToken, status, session])
 
+  const onToggleDebugTap = useCallback(() => {
+    if (!controlToken) return
+    const enabled = !(status?.debug?.armed === true)
+    void sendSession(fetcher, controlToken, { kind: 'set-debug-tap', enabled }).then(result => {
+      if (result.ok) {
+        session.refresh()
+        if (enabled) setDebugOpen(true)
+      }
+    })
+  }, [fetcher, controlToken, status, session])
+
   const onTabSelect = useCallback((id: string) => {
     if (id === 'home') setView({ kind: 'home' })
     else setView({ kind: 'session', id })
@@ -577,6 +589,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
         </header>
 
         <TimelineDrawer entries={status?.recent ?? []} open={timelineOpen} onToggle={() => setTimelineOpen(value => !value)} />
+        <DebugDrawer debug={status?.debug} open={debugOpen} onToggle={() => setDebugOpen(value => !value)} />
 
         <div style={bodyStyles}>
           {showingHome ? (
@@ -670,6 +683,20 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
               }
             >
               {status?.session?.desktopView ? 'Desktop ✓' : 'Desktop view'}
+            </button>
+          ) : null}
+          {!showingHome ? (
+            <button
+              type="button"
+              style={status?.debug?.armed ? primaryButtonStyles('#d29922') : secondaryButtonStyles}
+              onClick={onToggleDebugTap}
+              title={
+                status?.debug?.armed
+                  ? 'console + network tap is ARMED — extra listeners are attached (a posture gap); press to disarm and wipe the buffers'
+                  : 'arm the console + network tap for the debug drawer — opt-in: it attaches extra listeners while armed'
+              }
+            >
+              {status?.debug?.armed ? 'Debug tap ✓' : 'Debug tap'}
             </button>
           ) : null}
           <span style={footerNoteStyles}>

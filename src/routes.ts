@@ -320,6 +320,11 @@ export class Routes implements RouteHandlers {
         const result = await this.host.setDesktopView(payload.session, body.enabled === true, { reload: body.reload !== false })
         return this.#json(res, result.ok ? 200 : 409, result)
       }
+      case 'set-debug-tap': {
+        if (payload.scope !== 'drive') return this.#fail(res, 403, 'drive scope required')
+        const result = await this.host.setDebugTap(payload.session, body.enabled === true)
+        return this.#json(res, result.ok ? 200 : 409, result)
+      }
       case 'start-browser': {
         // View scope is enough: launching a NEW browser hijacks no pointer and
         // touches no existing session — same reasoning as `takeover` needing

@@ -69,8 +69,8 @@ export interface ToastMessage {
 }
 
 export interface OverlayState {
-  /** Where the agent's pointer currently is, normalized. Null before the first gesture. */
-  cursor: { x: number; y: number } | null
+  /** Where the pointer currently is, normalized — and WHOSE it is. Null before the first gesture. */
+  cursor: { x: number; y: number; actor: 'agent' | 'user' } | null
   /** True between a `down` and its `up` — the cursor renders pressed. */
   pressed: boolean
   clicks: ClickPulse[]
@@ -126,23 +126,23 @@ export function applyInteraction(state: OverlayState, record: InteractionRecord)
       if (!last) return base
       // A move also draws its path briefly — that is the only way the humanized
       // curve is visible at all.
-      return { ...base, cursor: { x: last.x, y: last.y }, trails: [...base.trails, { id, kind: 'drag', points, at: Date.now() }] }
+      return { ...base, cursor: { x: last.x, y: last.y, actor: actorOf(record) }, trails: [...base.trails, { id, kind: 'drag', points, at: Date.now() }] }
     }
     case 'down':
-      return { ...base, cursor: { x: event.x, y: event.y }, pressed: true }
+      return { ...base, cursor: { x: event.x, y: event.y, actor: actorOf(record) }, pressed: true }
     case 'up':
-      return { ...base, cursor: { x: event.x, y: event.y }, pressed: false }
+      return { ...base, cursor: { x: event.x, y: event.y, actor: actorOf(record) }, pressed: false }
     case 'click':
       return {
         ...base,
-        cursor: { x: event.x, y: event.y },
+        cursor: { x: event.x, y: event.y, actor: actorOf(record) },
         pressed: false,
         clicks: [...base.clicks, { id, x: event.x, y: event.y, button: event.button, ...(event.label ? { label: event.label } : {}), at: Date.now() }],
       }
     case 'drag':
     case 'swipe': {
       const points = event.points && event.points.length >= 2 ? event.points : [event.from, event.to]
-      return { ...base, cursor: { x: event.to.x, y: event.to.y }, trails: [...base.trails, { id, kind: event.type, points, at: Date.now() }] }
+      return { ...base, cursor: { x: event.to.x, y: event.to.y, actor: actorOf(record) }, trails: [...base.trails, { id, kind: event.type, points, at: Date.now() }] }
     }
     case 'scroll':
       return { ...base, scroll: { deltaX: event.deltaX, deltaY: event.deltaY, at: Date.now() } }
@@ -196,6 +196,11 @@ export function pruneOverlay(state: OverlayState, now = Date.now()): OverlayStat
   return { ...state, clicks, focuses, trails, toasts, scroll, typing, key }
 }
 
+/** Whose hand: the record says. Anything unlabeled stays the agent's. */
+function actorOf(record: InteractionRecord): 'agent' | 'user' {
+  return record.actor === 'user' ? 'user' : 'agent'
+}
+
 function shortUrl(url: string): string {
   try {
     const parsed = new URL(url)
@@ -232,7 +237,7 @@ export function InteractionOverlay(props: InteractionOverlayProps): ReactNode {
       {state.clicks.map(click => (
         <ClickRipple key={click.id} click={click} />
       ))}
-      {showPointer && state.cursor ? <AgentCursor point={state.cursor} pressed={state.pressed} /> : null}
+      {showPointer && state.cursor ? <ActorCursor point={state.cursor} pressed={state.pressed} /> : null}
       {state.scroll ? <ScrollArrow scroll={state.scroll} /> : null}
       {state.typing ? <TypingBadge typing={state.typing} /> : null}
       {state.key ? <KeyBadge keyName={state.key.key} /> : null}
@@ -250,9 +255,31 @@ export function InteractionOverlay(props: InteractionOverlayProps): ReactNode {
   )
 }
 
-function AgentCursor({ point, pressed }: { point: { x: number; y: number }; pressed: boolean }): ReactNode {
+/**
+ * Two hands, two cursors. The agent is the blue arrow; a human who took over
+ * is an amber open hand with a "you" tag — an observer watching the stream
+ * can always tell WHOSE hand is on the mouse, which is the whole point of a
+ * stream you can grab.
+ */
+function ActorCursor({ point, pressed }: { point: { x: number; y: number; actor: 'agent' | 'user' }; pressed: boolean }): ReactNode {
+  if (point.actor === 'user') {
+    return (
+      <div style={cursorWrapStyles(point)} data-actor="user">
+        <svg width="22" height="22" viewBox="0 0 24 24" style={pressed ? cursorPressedStyles : cursorStyles}>
+          <path
+            d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11l4.8 1.2c1.6.4 2.6 1.9 2.3 3.5l-.6 3a3.5 3.5 0 0 1-3.4 2.8H10a4 4 0 0 1-3.2-1.6L4 16.2a1.6 1.6 0 0 1 2.5-2L8 16z"
+            fill="rgba(210,153,34,0.95)"
+            stroke="rgba(255,255,255,0.92)"
+            strokeWidth="1.3"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span style={youTagStyles}>you</span>
+      </div>
+    )
+  }
   return (
-    <div style={cursorWrapStyles(point)}>
+    <div style={cursorWrapStyles(point)} data-actor="agent">
       <svg width="22" height="22" viewBox="0 0 24 24" style={pressed ? cursorPressedStyles : cursorStyles}>
         <path
           d="M5 2 L19 12 L12 13.5 L15.5 21 L12 22.5 L8.5 15 L5 19 Z"
@@ -264,6 +291,22 @@ function AgentCursor({ point, pressed }: { point: { x: number; y: number }; pres
       </svg>
     </div>
   )
+}
+
+const youTagStyles: CSSProperties = {
+  position: 'absolute',
+  left: 18,
+  top: 14,
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: '#d29922',
+  background: 'rgba(20,14,2,0.82)',
+  border: '1px solid rgba(210,153,34,0.5)',
+  borderRadius: 4,
+  padding: '1px 4px',
+  whiteSpace: 'nowrap',
 }
 
 function ClickRipple({ click }: { click: ClickPulse }): ReactNode {
@@ -367,6 +410,12 @@ function InteractionStyles(): ReactNode {
 .dsh-browser-focus { animation: dsh-browser-focus 2200ms ease-out forwards; }
 .dsh-browser-trail { animation: dsh-browser-trail 900ms ease-out forwards; stroke-dasharray: 60; }
 .dsh-browser-typing { animation: dsh-browser-typing 900ms ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .dsh-browser-ripple, .dsh-browser-focus, .dsh-browser-trail, .dsh-browser-typing { animation: none !important; }
+  .dsh-browser-ripple { opacity: 0.9; }
+  .dsh-browser-focus { opacity: 0.8; }
+  .dsh-browser-trail { opacity: 0.7; }
+}
 `}</style>
   )
 }

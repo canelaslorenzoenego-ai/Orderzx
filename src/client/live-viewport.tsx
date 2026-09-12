@@ -201,7 +201,7 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
         // opening the panel mid-session shows the pointer where it actually is.
         if (next.lastPointer) {
           const point = next.lastPointer
-          setOverlay(current => (current.lastSeq === 0 && !current.cursor ? { ...current, cursor: point } : current))
+          setOverlay(current => (current.lastSeq === 0 && !current.cursor ? { ...current, cursor: { ...point, actor: 'agent' as const } } : current))
         }
         // A 403/404 on status means the token died or the session closed.
       } else if (phase === 'live') {

@@ -80,6 +80,9 @@ export const CAPSULE_KEYFRAMES = `
   0%, 100% { transform: scaleY(0.35); }
   50%      { transform: scaleY(1); }
 }
+@keyframes dsh-browser-spin {
+  to { transform: rotate(360deg); }
+}
 @keyframes dsh-browser-ekg {
   0%   { stroke-dashoffset: 32; }
   100% { stroke-dashoffset: 0; }
@@ -108,7 +111,13 @@ export function installCapsuleKeyframes(doc: Document): void {
  * visibly accelerates as the browser comes up — cheap, and it reads as progress
  * without any text having to change.
  */
-export function MonitorGlyph({ step, tone }: { step: BootState['step']; tone: 'busy' | 'live' | 'attention' | 'error' }): ReactNode {
+export interface SessionStateFlags {
+  recording?: boolean
+  jobs?: boolean
+  takeover?: boolean
+}
+
+export function MonitorGlyph({ step, tone, state }: { step: BootState['step']; tone: 'busy' | 'live' | 'attention' | 'error'; state?: SessionStateFlags }): ReactNode {
   const glyphLabel = tone === 'live' ? 'browser live — frames arriving'
     : tone === 'attention' ? `browser needs you — ${step}`
     : tone === 'error' ? 'browser error'
@@ -174,6 +183,20 @@ export function MonitorGlyph({ step, tone }: { step: BootState['step']; tone: 'b
             <path d="M10 4.2v4.2" />
             <path d="M10 10.6v0.2" />
           </g>
+        ) : null}
+        {/* session-state corner ceremonies: REC dot, job gear, takeover hand —
+            small enough to share the tube with the boot ceremonies */}
+        {state?.recording ? (
+          <circle cx="16.2" cy="3.8" r="1.1" fill="#f85149" style={{ animation: 'dsh-browser-blink 1s steps(1) infinite' }} />
+        ) : null}
+        {state?.jobs ? (
+          <g stroke="#67e8f9" strokeWidth="0.9" style={{ transformOrigin: '16.2px 9.6px', animation: 'dsh-browser-spin 1.8s linear infinite' }}>
+            <circle cx="16.2" cy="9.6" r="1.2" fill="none" />
+            <path d="M16.2 7.6v-0.9M16.2 12.5v-0.9M18.2 9.6h0.9M13.3 9.6h0.9" strokeLinecap="round" />
+          </g>
+        ) : null}
+        {state?.takeover ? (
+          <rect x="3.4" y="3" width="2.4" height="2.4" rx="0.6" fill="#d29922" style={{ animation: 'dsh-browser-blink 1.2s steps(1) infinite' }} />
         ) : null}
         {tone === 'error' ? (
           <g stroke={screen} strokeWidth="1.4" strokeLinecap="round">
@@ -407,7 +430,7 @@ export function StatusCapsule(props: StatusCapsuleProps): ReactNode {
       title="open the live browser panel"
       aria-label={`browser: ${bootLabel(boot)}. Open panel.`}
     >
-      <MonitorGlyph step={boot.step} tone={tone} />
+      <MonitorGlyph step={boot.step} tone={tone} state={{ recording: boot.status?.recording?.active === true, jobs: (boot.status?.jobs ?? []).some(job => job.status === 'running'), takeover: boot.status?.takeover !== undefined }} />
       <span style={dotStyles(tone)} />
       <span>{bootLabel(boot)}</span>
       {sessionCount > 1 ? <span style={sessionCountStyles}>{sessionCount}</span> : null}

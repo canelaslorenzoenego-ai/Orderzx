@@ -218,6 +218,7 @@ export function TimelineDrawer(props: TimelineDrawerProps): ReactNode {
             entries.map((entry, index) => (
               <div key={`${entry.ts}-${index}`} style={entryRowStyles}>
                 <span style={entryDotStyles(entry)} aria-hidden="true" />
+                <span style={toolIconStyles} data-toolicon={entry.tool.replace('browser_', '')} aria-hidden="true">{toolIcon(entry.tool)}</span>
                 <span style={entryToolStyles}>{entry.tool.replace('browser_', '')}</span>
                 <span style={entrySummaryStyles}>{entry.summary}</span>
                 <span style={entryTimeStyles}>{relativeTime(entry.ts)}</span>
@@ -316,6 +317,35 @@ function debugLevelDotStyles(level: string): CSSProperties {
 function debugStatusDotStyles(status: number | undefined, failure: string | undefined): CSSProperties {
   const color = failure || status === 0 || (typeof status === 'number' && status >= 400) ? '#f85149' : '#3fb950'
   return { flex: '0 0 auto', width: 6, height: 6, borderRadius: '50%', background: color }
+}
+
+const toolIconStyles: CSSProperties = {
+  flex: '0 0 auto',
+  display: 'inline-flex',
+  alignItems: 'center',
+  color: 'var(--dsw-text-muted, #8b949e)',
+}
+
+/**
+ * A 10px glyph per tool family, so the timeline reads as pictures first and
+ * words second. Strokes only — they inherit the row's muted color.
+ */
+function toolIcon(tool: string): ReactNode {
+  const t = tool.replace('browser_', '')
+  const common = { width: 10, height: 10, viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  if (t === 'click' || t === 'act') return <svg {...common}><path d="M2.5 1.5 9.5 6.2 6 7l1.8 3.6-1.7.8L4.3 7.8 2.5 9.5Z" /></svg>
+  if (t === 'type' || t === 'fill_form') return <svg {...common}><rect x="1" y="3" width="10" height="6" rx="1" /><path d="M3 5h.01M5 5h.01M7 5h.01M9 5h.01M4 7h4" /></svg>
+  if (t === 'press') return <svg {...common}><rect x="3" y="3.5" width="6" height="5" rx="1" /><path d="M5 6.5h2" /></svg>
+  if (t === 'scroll' || t === 'swipe') return <svg {...common}><path d="M6 2v8M3.5 7.5 6 10l2.5-2.5" /></svg>
+  if (t === 'navigate' || t === 'tabs') return <svg {...common}><circle cx="6" cy="6" r="4.4" /><path d="M1.6 6h8.8M6 1.6c-1.6 1.3-2.3 2.9-2.3 4.4S4.4 9.1 6 10.4c1.6-1.3 2.3-2.9 2.3-4.4S7.6 2.9 6 1.6Z" /></svg>
+  if (t === 'observe' || t === 'see') return <svg {...common}><path d="M1.5 6S3.5 2.8 6 2.8 10.5 6 10.5 6 8.5 9.2 6 9.2 1.5 6 1.5 6Z" /><circle cx="6" cy="6" r="1.4" /></svg>
+  if (t === 'extract') return <svg {...common}><path d="M4.5 2 3 6l1.5 4M7.5 2 9 6l-1.5 4" /></svg>
+  if (t === 'files') return <svg {...common}><path d="M6 2v5M4 5.2 6 7.2l2-2M2.5 9.5h7" /></svg>
+  if (t === 'workflow') return <svg {...common}><circle cx="6" cy="6" r="4.4" /><circle cx="6" cy="6" r="1.6" fill="currentColor" stroke="none" /></svg>
+  if (t === 'task') return <svg {...common}><circle cx="6" cy="6" r="2" /><path d="M6 1.6v1.2M6 9.2v1.2M10.4 6H9.2M2.8 6H1.6M9.1 2.9l-.9.9M3.8 8.2l-.9.9M9.1 9.1l-.9-.9M3.8 3.8l-.9-.9" /></svg>
+  if (t === 'challenge' || t === 'handoff' || t === 'takeover') return <svg {...common}><path d="M4 7V3.4a1 1 0 0 1 2 0V6l2.6.7c.9.2 1.4 1.1 1.3 2l-.3 1.6a2 2 0 0 1-2 1.7H5.6a2.2 2.2 0 0 1-1.8-.9L2.4 9.2a.9.9 0 0 1 1.4-1.1L4 8.6Z" /></svg>
+  if (t === 'cookies') return <svg {...common}><circle cx="6" cy="6" r="4.4" /><path d="M4.4 5h.01M7.4 4.4h.01M6.4 7.6h.01" /></svg>
+  return <svg {...common}><circle cx="6" cy="6" r="1.6" fill="currentColor" stroke="none" /></svg>
 }
 
 function entryDotStyles(entry: ActionEntry): CSSProperties {

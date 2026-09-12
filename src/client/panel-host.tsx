@@ -291,6 +291,13 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   const containerRef = useRef<HTMLDivElement | null>(null)
 
   const status: BrowserStatus | undefined = session.status
+  // fps sparkline: a 24-poll ring of frame rates. Pushed in an effect, read at
+  // render — status polls re-render anyway, so the line breathes with the stream.
+  const fpsRing = useRef<number[]>([])
+  useEffect(() => {
+    const fps = status?.frames?.fps
+    if (typeof fps === 'number' && fps > 0) fpsRing.current = [...fpsRing.current, fps].slice(-24)
+  }, [status?.frames?.fps])
 
   // Fold every status poll into the boot machine. This is what drives the
   // capsule→extend→live staging and the challenge/ownership banners.
@@ -580,6 +587,27 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
                 : null}
             </div>
           </div>
+          {fpsRing.current.length > 1 ? (
+            <svg
+              width="46"
+              height="16"
+              viewBox="0 0 46 16"
+              role="img"
+              aria-label={`frames per second over the last ${fpsRing.current.length} polls`}
+              style={sparkStyles}
+            >
+              <title>{`fps ${fpsRing.current[fpsRing.current.length - 1]}`}</title>
+              <polyline
+                points={fpsRing.current.map((value, index) => `${1 + (index / 23) * 44},${(15 - Math.min(1, value / 30) * 13).toFixed(1)}`).join(' ')}
+                fill="none"
+                stroke="#3fb950"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                opacity="0.9"
+              />
+            </svg>
+          ) : null}
           <select
             style={selectStyles}
             value={status?.frames?.source ?? 'screenshot'}
@@ -954,6 +982,11 @@ const jobChipStyles: CSSProperties = {
   color: '#67e8f9',
   fontWeight: 600,
   letterSpacing: '0.04em',
+}
+
+const sparkStyles: CSSProperties = {
+  flex: '0 0 auto',
+  alignSelf: 'center',
 }
 
 const recChipStyles: CSSProperties = {

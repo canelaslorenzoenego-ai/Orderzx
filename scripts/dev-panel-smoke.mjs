@@ -553,7 +553,27 @@ const el = React.createElement
   step('the open drawer lists actions newest-first', openDrawer.indexOf('>act<') !== -1 && openDrawer.indexOf('>act<') < openDrawer.indexOf('>click<'), `act@${openDrawer.indexOf('>act<')} click@${openDrawer.indexOf('>click<')}`)
   step('timeline entries render their summaries', openDrawer.includes('click e12'))
 
-  // debug drawer (console + network tap)
+
+  // C8: actor-aware cursors, capsule ceremonies, timeline glyphs, reduced motion.
+  const { InteractionOverlay, applyInteraction, resetOverlay, MonitorGlyph } = client
+  const stamp = Date.now()
+  let userOvState = resetOverlay()
+  userOvState = applyInteraction(userOvState, { seq: 1, at: stamp, actor: 'user', event: { type: 'click', x: 0.3, y: 0.4, button: 'left' } })
+  const userOv = renderToString(el(InteractionOverlay, { state: userOvState }))
+  step('a human gesture draws the amber tagged cursor', userOv.includes('data-actor="user"') && userOv.includes('>you<'), '')
+  let agentOvState = resetOverlay()
+  agentOvState = applyInteraction(agentOvState, { seq: 1, at: stamp, actor: 'agent', event: { type: 'click', x: 0.3, y: 0.4, button: 'left' } })
+  const agentOv = renderToString(el(InteractionOverlay, { state: agentOvState }))
+  step('the agent keeps the untagged arrow', agentOv.includes('data-actor="agent"') && !agentOv.includes('>you<'), '')
+  step('the overlay ships a prefers-reduced-motion override', userOv.includes('@media (prefers-reduced-motion'), '')
+  const busyGlyph = renderToString(el(MonitorGlyph, { step: 'connecting', tone: 'live', state: { recording: true, jobs: true, takeover: true } }))
+  step('the capsule tube carries REC + job + takeover ceremonies', busyGlyph.includes('#f85149') && busyGlyph.includes('#67e8f9') && busyGlyph.includes('#d29922') && busyGlyph.includes('dsh-browser-spin'), '')
+  const plainGlyph = renderToString(el(MonitorGlyph, { step: 'connecting', tone: 'live' }))
+  step('without state flags the tube stays clean', !plainGlyph.includes('dsh-browser-spin') && !plainGlyph.includes('#f85149'), '')
+  step('timeline rows carry tool-family glyphs', openDrawer.includes('data-toolicon="click"') && openDrawer.includes('data-toolicon="act"'), '')
+
+
+    // debug drawer (console + network tap)
   const { DebugDrawer } = client
   const closedDebug = renderToString(el(DebugDrawer, { debug: undefined, open: false, onToggle() {} }))
   step('the debug drawer renders its toggle closed', closedDebug.includes('console + network') && !closedDebug.includes('tap disarmed'))

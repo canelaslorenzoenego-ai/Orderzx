@@ -316,7 +316,18 @@
   @keyframes dsh-browser-ekg { 0% { stroke-dashoffset: 32; } 60%,100% { stroke-dashoffset: -32; } }
   @keyframes dsh-browser-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .42; transform: scale(.82); } }
   @keyframes hm-scan { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: .55; } 90% { opacity: .55; } 100% { transform: translateY(150px); opacity: 0; } }
-  @keyframes hm-cursor { 0%,100% { transform: translate(0,0); } 42%,58% { transform: translate(-96px,44px); } }
+  @keyframes hm-cursor { 0%,8% { transform: translate(0,0); } 20%,30% { transform: translate(-330px,27px); } 44%,58% { transform: translate(-96px,44px); } 74%,92% { transform: translate(0,0); } }
+  @keyframes hm-squish { 0%,18%,26%,42%,50%,100% { transform: scale(1); } 22%,46% { transform: scale(0.82); } }
+  @keyframes hm-ripple2 { 0%,20% { opacity: 0; transform: scale(0.2); } 24% { opacity: 1; } 38%,100% { opacity: 0; transform: scale(1.9); } }
+  @keyframes hm-ripple3 { 0%,44% { opacity: 0; transform: scale(0.2); } 48% { opacity: 1; } 62%,100% { opacity: 0; transform: scale(1.9); } }
+  @keyframes hm-agent-vis { 0%,70% { opacity: 1; } 74%,96% { opacity: 0; } 100% { opacity: 1; } }
+  @keyframes hm-hand-vis { 0%,70% { opacity: 0; } 74%,96% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes hm-rec { 0%,55% { opacity: 0; } 60%,90% { opacity: 1; } 95%,100% { opacity: 0; } }
+  @keyframes hm-takeover { 0%,70% { opacity: 1; } 74%,96% { opacity: 0; } 100% { opacity: 1; } }
+  @keyframes hm-resume { 0%,70% { opacity: 0; } 74%,96% { opacity: 1; } 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .panel-mock [style*="animation"] { animation: none !important; }
+  }
   @keyframes hm-ripple { 0%,40% { transform: scale(.2); opacity: 0; } 48% { transform: scale(1); opacity: .85; } 62%,100% { transform: scale(2.2); opacity: 0; } }
   @keyframes hm-type { 0% { width: 0; } 55%,100% { width: 118px; } }
   @media (prefers-reduced-motion: reduce) {
@@ -361,7 +372,7 @@
     <div class="badges">
       <span class="badge"><i>version</i><b class="b-blue">v0.2.0-rc.1</b></span>
       <span class="badge"><i>platform</i><b class="b-green">Chromium 150+ · 3 engines</b></span>
-      <span class="badge"><i>smoke tests</i><b class="b-green">570/570 ✓</b></span>
+      <span class="badge"><i>smoke tests</i><b class="b-green">576/576 ✓</b></span>
       <span class="badge"><i>backend</i><b class="b-amber">none · on-loopback</b></span>
       <span class="badge"><i>license</i><b class="b-gray">MIT</b></span>
     </div>
@@ -430,17 +441,35 @@
           <text x="438" y="243.5" font-family="ui-monospace,monospace" font-size="9" fill="rgba(255,255,255,.85)" text-anchor="middle">Add to cart</text>
           <!-- scanline -->
           <rect x="14" y="86" width="532" height="3" fill="#67e8f9" style="animation:hm-scan 5.5s linear infinite"/>
-          <!-- ghost cursor + ripple -->
+          <!-- the agent's hand: a three-stop journey (button → dish card → back),
+               a ripple synced to each stop, and a squish on every click -->
           <circle cx="438" cy="240" r="10" fill="none" stroke="#67e8f9" stroke-width="1.8" style="animation:hm-ripple 6s ease-out infinite; transform-box:fill-box; transform-origin:center"/>
+          <circle cx="108" cy="167" r="12" fill="none" stroke="#67e8f9" stroke-width="1.6" style="animation:hm-ripple2 6s ease-out infinite; transform-box:fill-box; transform-origin:center"/>
+          <circle cx="342" cy="184" r="10" fill="none" stroke="#67e8f9" stroke-width="1.6" style="animation:hm-ripple3 6s ease-out infinite; transform-box:fill-box; transform-origin:center"/>
           <g style="animation:hm-cursor 6s ease-in-out infinite">
-            <path d="M438 240 l.6 16 4.3-4.3 2.9 6.5 2.9-1.2-2.9-6.5 6-.7z" fill="#e6edf3" stroke="#0d1526" stroke-width="1"/>
+            <g style="animation:hm-squish 6s ease-in-out infinite; transform-box:fill-box; transform-origin:top left">
+              <path d="M438 240 l.6 16 4.3-4.3 2.9 6.5 2.9-1.2-2.9-6.5 6-.7z" fill="#e6edf3" stroke="#0d1526" stroke-width="1"/>
+            </g>
+          </g>
+          <!-- the handoff: for a beat, the amber HUMAN hand owns the pointer -->
+          <g style="animation:hm-hand-vis 6s steps(1) infinite">
+            <path d="M430 236v-7.5a1.5 1.5 0 0 1 3 0V234l4.8 1.2c1.6.4 2.6 1.9 2.3 3.5l-.6 3a3.5 3.5 0 0 1-3.4 2.8h-4.1a4 4 0 0 1-3.2-1.6l-2.8-3.7a1.6 1.6 0 0 1 2.5-2z" fill="rgba(210,153,34,.95)" stroke="#fff" stroke-width="1.1"/>
+            <text x="446" y="252" font-family="ui-monospace,monospace" font-size="8" fill="#d29922" font-weight="700">you</text>
+          </g>
+          <g style="animation:hm-agent-vis 6s steps(1) infinite">
+            <rect x="424" y="228" width="0.01" height="0.01" fill="none"/>
           </g>
         </g>
         <!-- status row -->
         <rect x="0" y="306" width="560" height="34" fill="#101b30"/>
         <circle cx="22" cy="323" r="4" fill="#3fb950" style="animation:dsh-browser-pulse 2.4s ease-in-out infinite"/>
         <text id="framestat" x="34" y="327" font-family="ui-monospace,monospace" font-size="11.5" fill="rgba(255,255,255,.5)">live · 1366×768 · frame #1284 · 5 fps · patchright</text>
-        <text x="540" y="327" font-family="ui-monospace,monospace" font-size="11.5" fill="rgba(255,255,255,.5)" text-anchor="end">[ Take over ]</text>
+        <g style="animation:hm-takeover 6s steps(1) infinite"><text x="540" y="327" font-family="ui-monospace,monospace" font-size="11.5" fill="rgba(255,255,255,.5)" text-anchor="end">[ Take over ]</text></g>
+        <g style="animation:hm-resume 6s steps(1) infinite"><text x="540" y="327" font-family="ui-monospace,monospace" font-size="11.5" fill="#d29922" text-anchor="end">[ Resume agent ]</text></g>
+        <g style="animation:hm-rec 6s steps(1) infinite">
+          <circle cx="392" cy="323" r="3.4" fill="#f85149"/>
+          <text x="400" y="327" font-family="ui-monospace,monospace" font-size="10.5" fill="#f85149" font-weight="700">REC 4</text>
+        </g>
         <!-- timeline strip -->
         <rect x="0" y="340" width="560" height="32" fill="#0a1220"/>
         <text x="22" y="360" font-family="ui-monospace,monospace" font-size="10.5" fill="rgba(255,255,255,.42)">▸ timeline · sess-8f3a2c</text>
@@ -467,7 +496,7 @@
 <div class="stats">
   <div class="wrap stats-in">
     <div class="stat rv"><b data-count="24">0</b><span>model-facing tools</span></div>
-    <div class="stat rv"><b data-count="570">0</b><span>green checks</span></div>
+    <div class="stat rv"><b data-count="576">0</b><span>green checks</span></div>
     <div class="stat rv"><b data-count="3">0</b><span>stealth engines</span></div>
     <div class="stat rv"><b data-count="320">0</b><span>ms capsule pop</span></div>
   </div>
@@ -699,21 +728,21 @@
 <section id="tests" class="wrap">
   <div class="sec-head rv">
     <span class="sec-tag">// verification</span>
-    <h2>570 checks, all green — against a real Chromium.</h2>
+    <h2>576 checks, all green — against a real Chromium.</h2>
     <p>Static suites prove the contracts; the live and e2e suites drive an actual browser over CDP, including the self-heal and cookie-metadata guarantees.</p>
   </div>
   <div class="tests-grid">
     <div class="rv" id="bars">
-      <div class="bar-row"><span class="lbl">tools</span><div class="bar-track"><div class="bar-fill" data-w="96" style="background:linear-gradient(90deg,#58a6ff,#67e8f9)"></div></div><span class="n">184</span></div>
-      <div class="bar-row"><span class="lbl">panel</span><div class="bar-track"><div class="bar-fill" data-w="100" style="background:linear-gradient(90deg,#bc8cff,#67e8f9)"></div></div><span class="n">191</span></div>
-      <div class="bar-row"><span class="lbl">frames</span><div class="bar-track"><div class="bar-fill" data-w="38" style="background:linear-gradient(90deg,#58a6ff,#3fb950)"></div></div><span class="n">72</span></div>
-      <div class="bar-row"><span class="lbl">routes</span><div class="bar-track"><div class="bar-fill" data-w="38" style="background:linear-gradient(90deg,#3fb950,#67e8f9)"></div></div><span class="n">73</span></div>
+      <div class="bar-row"><span class="lbl">tools</span><div class="bar-track"><div class="bar-fill" data-w="93" style="background:linear-gradient(90deg,#58a6ff,#67e8f9)"></div></div><span class="n">184</span></div>
+      <div class="bar-row"><span class="lbl">panel</span><div class="bar-track"><div class="bar-fill" data-w="100" style="background:linear-gradient(90deg,#bc8cff,#67e8f9)"></div></div><span class="n">197</span></div>
+      <div class="bar-row"><span class="lbl">frames</span><div class="bar-track"><div class="bar-fill" data-w="37" style="background:linear-gradient(90deg,#58a6ff,#3fb950)"></div></div><span class="n">72</span></div>
+      <div class="bar-row"><span class="lbl">routes</span><div class="bar-track"><div class="bar-fill" data-w="37" style="background:linear-gradient(90deg,#3fb950,#67e8f9)"></div></div><span class="n">73</span></div>
       <div class="bar-row"><span class="lbl">mcp bridge</span><div class="bar-track"><div class="bar-fill" data-w="7" style="background:linear-gradient(90deg,#67e8f9,#bc8cff)"></div></div><span class="n">13</span></div>
-      <div class="bar-row"><span class="lbl">live · CDP</span><div class="bar-track"><div class="bar-fill" data-w="12" style="background:linear-gradient(90deg,#3fb950,#d29922)"></div></div><span class="n">22</span></div>
+      <div class="bar-row"><span class="lbl">live · CDP</span><div class="bar-track"><div class="bar-fill" data-w="11" style="background:linear-gradient(90deg,#3fb950,#d29922)"></div></div><span class="n">22</span></div>
       <div class="bar-row"><span class="lbl">e2e</span><div class="bar-track"><div class="bar-fill" data-w="8" style="background:linear-gradient(90deg,#d29922,#3fb950)"></div></div><span class="n">15</span></div>
     </div>
     <div class="tests-note rv">
-      <span class="big" data-count="570">0</span>
+      <span class="big" data-count="576">0</span>
       <b>Green, end to end.</b> The live suite reloads the fixture to kill every ref and asserts the next click heals once and still lands; it plants an <b>HttpOnly</b> cookie and asserts the value never reaches a tool result. A suite that can't fail is a suite that proves nothing — these can.
     </div>
   </div>

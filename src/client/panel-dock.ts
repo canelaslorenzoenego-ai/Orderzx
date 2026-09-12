@@ -94,7 +94,7 @@ export function claimPanelDock(doc: Document, widthPx: number): PanelDockLease {
   element.setAttribute(PANEL_DOCK_ATTRIBUTE, 'true')
   // Animate the push so the extension reads as motion, not a jump. 180ms is
   // fast enough to feel immediate and slow enough to be perceived.
-  element.style.transition = priorTransition || 'margin-right 180ms cubic-bezier(0.22, 0.61, 0.36, 1)'
+  element.style.transition = priorTransition || 'margin-right 240ms cubic-bezier(0.34, 1.28, 0.44, 1)'
   element.style.marginRight = `${clamped}px`
 
   let released = false
@@ -185,9 +185,15 @@ export function dockedSurfaceStyles(width: number, extending: boolean): CSSPrope
     bottom: 0,
     width: `${width}px`,
     // Slide in from the right during the `extend` stage; the dock margin
-    // animates on the same 180ms curve so the two stay in step.
+    // animates on the same curve so the two stay in step. The curve overshoots
+    // by ~6% and settles — the dashboard should feel like it SPRINGS open,
+    // not like it is being dragged.
     transform: extending ? 'translateX(100%)' : 'translateX(0)',
-    transition: 'transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1), width 180ms cubic-bezier(0.22, 0.61, 0.36, 1)',
+    transition: 'transform 240ms cubic-bezier(0.34, 1.28, 0.44, 1), width 240ms cubic-bezier(0.22, 0.61, 0.36, 1)',
+    // Frosted glass: the page behind stays legible-as-context while the
+    // panel reads as its own surface.
+    backdropFilter: 'blur(10px) saturate(1.15)',
+    WebkitBackdropFilter: 'blur(10px) saturate(1.15)',
     display: 'flex',
     flexDirection: 'column',
     zIndex: 60,

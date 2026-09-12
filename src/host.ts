@@ -24,8 +24,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { ActionEntry, BrowserFrame, BootPhase, BrowserStatus, ChallengeRecord, ControlMessage, CookieMeta, FrameSource, SessionMessage, SessionSummary } from './protocol.js'
 import { InteractionTrace, type InteractionActor, type InteractionEvent, type InteractionRecord } from './interactions.js'
 import { DEFAULT_CONFIG } from './protocol.js'
@@ -33,6 +33,17 @@ import { AccessController, nextCapturePath, profileRoot } from './access.js'
 import { FrameLoop, withTimeout, type FrameStats } from './frames.js'
 import { probeEngine, resolveEngineProvider, EngineError, type EngineBrowser, type EnginePage, type EnginePosture } from './engine/index.js'
 import { navigationDwellMs, PRESETS, createRandom, sleep } from './engine/humanize.js'
+import {
+  MAX_WORKFLOW_STEPS,
+  appendKeyEvent,
+  identityCaptureScript,
+  identityProbeScript,
+  listVariableNames,
+  resolveVariables,
+  sanitizeWorkflowName,
+  type ElementIdentity,
+  type Workflow,
+} from './workflows.js'
 import type { BrowserConfig } from './protocol.js'
 
 /** Who owns the pointer right now. */
@@ -82,6 +93,19 @@ export interface HostSession {
     console: Array<{ ts: number; level: string; text: string }>
     network: Array<{ ts: number; method: string; url: string; status?: number; resourceType?: string; failure?: string }>
     taps: Map<string, () => void>
+  }
+  /**
+   * Workflow recording state. Armed explicitly (tool or panel); typed text is
+   * captured ONLY from the control channel while armed, and secret-shaped
+   * targets become required {{variables}} — never disk-written secrets.
+   */
+  recording: {
+    active: boolean
+    name: string | null
+    steps: import('./workflows.js').WorkflowStep[]
+    /** True while the last click landed on a password-shaped field. */
+    secretTarget: boolean
+    truncated: boolean
   }
   /** Last known agent pointer, normalized — seeds the overlay cursor on open. */
   lastPointer: { x: number; y: number } | null
@@ -284,6 +308,7 @@ export class BrowserHostController {
       history: [],
       desktopView: false,
       debug: { armed: false, supported: false, console: [], network: [], taps: new Map() },
+      recording: { active: false, name: null, steps: [], secretTarget: false, truncated: false },
       lastPointer: null,
     }
     this.#sessions.set(id, session)
@@ -491,9 +516,60 @@ export class BrowserHostController {
       default:
         return { ok: false, refused: 'policy', message: 'unknown control message' }
     }
+    await this.#captureStep(session, message)
     session.lastActivityAt = Date.now()
     await session.frames.nudge(() => this.#activePage(id))
     return { ok: true, applied: message.kind }
+  }
+
+  /**
+   * Append one just-applied HUMAN gesture to an armed recording.
+   *
+   * Identity is captured best-effort at click time (one isolated probe) so
+   * replay can prefer role/name matching over raw coordinates. Failures here
+   * must never break the gesture — the click already happened.
+   */
+  async #captureStep(session: HostSession, message: ControlMessage): Promise<void> {
+    const rec = session.recording
+    if (!rec.active) return
+    const page = session.browser.activePage()
+    if (!page) return
+    if (rec.steps.length >= MAX_WORKFLOW_STEPS) {
+      rec.active = false
+      rec.truncated = true
+      return
+    }
+    switch (message.kind) {
+      case 'pointer-down': {
+        if (message.button && message.button !== 'left') return
+        const viewport = page.viewport()
+        let identity: ElementIdentity | undefined
+        let isSecret = false
+        try {
+          const probe = await page.evaluateIsolated<{ identity?: ElementIdentity; isSecret?: boolean } | null>(
+            identityCaptureScript(Math.round(message.x * viewport.width), Math.round(message.y * viewport.height)),
+          )
+          if (probe?.identity) identity = probe.identity
+          isSecret = probe?.isSecret === true
+        } catch { /* identity is best-effort; the normalized point always records */ }
+        rec.steps.push({ kind: 'click', x: message.x, y: message.y, ...(identity ? { identity } : {}), ...(isSecret ? { secretTarget: true } : {}) })
+        rec.secretTarget = isSecret
+        return
+      }
+      case 'key':
+        rec.steps = appendKeyEvent(rec.steps, message.key, message.text, rec.secretTarget)
+        return
+      case 'wheel':
+        rec.steps.push({ kind: 'scroll', deltaX: message.deltaX, deltaY: message.deltaY })
+        rec.secretTarget = false
+        return
+      case 'address':
+        rec.steps.push({ kind: 'goto', url: message.url })
+        rec.secretTarget = false
+        return
+      default:
+        return
+    }
   }
 
   // ── interaction trace & action history ────────────────────────────────────
@@ -557,6 +633,168 @@ export class BrowserHostController {
    * is exactly the mutation a widget is scoring for, and the honest move is to
    * let the human finish the handoff first.
    */
+  // ── workflow record → replay ──────────────────────────────────────────────
+
+  /** Saved workflows live under the profile root — local disk only. */
+  #workflowsDir(): string {
+    return join(profileRoot(), 'workflows')
+  }
+
+  /**
+   * Arm (enabled) or stop-and-save (disabled) a workflow recording.
+   *
+   * The saved artifact is a plain JSON step list — reusable, inspectable,
+   * hand-editable. Secret-shaped fields are REQUIRED variables at replay.
+   */
+  async setRecording(id: string, enabled: boolean, name?: string): Promise<ActionResult & { name?: string; steps?: number; variables?: string[]; truncated?: boolean }> {
+    const session = this.#sessions.get(id)
+    if (!session) return { ok: false, refused: 'no-session', message: `no such session: ${id}` }
+    if (enabled) {
+      if (session.owner !== 'user') {
+        return { ok: false, refused: 'pointer-owned', message: 'recording captures HUMAN gestures — take over the pointer in the panel first, then demonstrate' }
+      }
+      if (session.recording.active) return { ok: false, refused: 'policy', message: 'a recording is already running — stop it first' }
+      const page = session.browser.activePage()
+      const stamped = `workflow-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
+      session.recording = {
+        active: true,
+        name: sanitizeWorkflowName(name ?? '') || stamped,
+        steps: [{ kind: 'goto', url: page?.url() ?? '' }],
+        secretTarget: false,
+        truncated: false,
+      }
+      this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `recording started as ${session.recording.name}`, ok: true })
+      return { ok: true, name: session.recording.name ?? undefined }
+    }
+    const rec = session.recording
+    if (!rec.active) return { ok: false, refused: 'policy', message: 'no recording is running' }
+    const workflow: Workflow = {
+      name: rec.name ?? 'workflow',
+      createdAt: Date.now(),
+      startUrl: rec.steps[0]?.kind === 'goto' ? rec.steps[0].url : '',
+      steps: rec.steps,
+      variables: listVariableNames(rec.steps),
+    }
+    session.recording = { active: false, name: null, steps: [], secretTarget: false, truncated: false }
+    await mkdir(this.#workflowsDir(), { recursive: true })
+    await writeFile(join(this.#workflowsDir(), `${workflow.name}.json`), JSON.stringify(workflow, null, 2), 'utf8')
+    this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `saved ${workflow.name} — ${workflow.steps.length} steps${workflow.variables.length > 0 ? `, needs {${workflow.variables.join(', ')}}` : ''}`, ok: true })
+    return { ok: true, name: workflow.name, steps: workflow.steps.length, variables: workflow.variables, ...(rec.truncated ? { truncated: true } : {}) }
+  }
+
+  async listWorkflows(): Promise<Array<{ name: string; steps: number; variables: string[]; createdAt: number; startUrl: string }>> {
+    let files: string[]
+    try {
+      files = await readdir(this.#workflowsDir())
+    } catch {
+      return []
+    }
+    const out: Array<{ name: string; steps: number; variables: string[]; createdAt: number; startUrl: string }> = []
+    for (const file of files.filter(entry => entry.endsWith('.json'))) {
+      try {
+        const parsed = JSON.parse(await readFile(join(this.#workflowsDir(), file), 'utf8')) as Workflow
+        out.push({
+          name: parsed.name ?? file.replace(/\.json$/, ''),
+          steps: Array.isArray(parsed.steps) ? parsed.steps.length : 0,
+          variables: Array.isArray(parsed.variables) ? parsed.variables : [],
+          createdAt: parsed.createdAt ?? 0,
+          startUrl: parsed.startUrl ?? '',
+        })
+      } catch { /* a corrupt file is skipped, not fatal */ }
+    }
+    return out.sort((a, b) => b.createdAt - a.createdAt)
+  }
+
+  async deleteWorkflow(name: string): Promise<ActionResult> {
+    const safe = sanitizeWorkflowName(name)
+    if (!safe) return { ok: false, refused: 'policy', message: 'invalid workflow name' }
+    try {
+      await unlink(join(this.#workflowsDir(), `${safe}.json`))
+      return { ok: true }
+    } catch {
+      return { ok: false, refused: 'policy', message: `no such workflow: ${safe}` }
+    }
+  }
+
+  /**
+   * Replay a saved workflow with humanized input.
+   *
+   * Identity-first: every recorded click tries to re-find its element by
+   * role/name/placeholder, and only falls back to the recorded normalized
+   * coordinates when the page has shifted. Missing variables REFUSE the run —
+   * a replay that silently types an empty password is worse than one that stops.
+   */
+  async runWorkflow(id: string, name: string, vars: Record<string, string> = {}): Promise<ActionResult & { replayed?: number; fallbacks?: number; name?: string }> {
+    const session = this.#sessions.get(id)
+    if (!session) return { ok: false, refused: 'no-session', message: `no such session: ${id}` }
+    if (session.owner === 'user') {
+      return { ok: false, refused: 'pointer-owned', message: 'you own the pointer — resume the agent before replaying a workflow' }
+    }
+    const safe = sanitizeWorkflowName(name)
+    if (!safe) return { ok: false, refused: 'policy', message: 'invalid workflow name' }
+    let workflow: Workflow
+    try {
+      workflow = JSON.parse(await readFile(join(this.#workflowsDir(), `${safe}.json`), 'utf8')) as Workflow
+    } catch {
+      return { ok: false, refused: 'policy', message: `no such workflow: ${safe}` }
+    }
+    const { steps, missing } = resolveVariables(Array.isArray(workflow.steps) ? workflow.steps : [], vars)
+    if (missing.length > 0) {
+      return { ok: false, refused: 'policy', message: `workflow ${safe} needs variable(s): ${missing.join(', ')} — pass them in vars` }
+    }
+    let fallbacks = 0
+    let replayed = 0
+    for (const [index, step] of steps.entries()) {
+      const page = session.browser.activePage()
+      if (!page) return { ok: false, refused: 'no-session', message: `the page closed mid-replay at step ${index + 1}`, replayed, fallbacks, name: safe }
+      const viewport = page.viewport()
+      try {
+        switch (step.kind) {
+          case 'goto':
+            await page.goto(step.url, { waitUntil: 'domcontentloaded' })
+            break
+          case 'click': {
+            let center: { x: number; y: number } | null = null
+            if (step.identity) {
+              try {
+                center = await page.evaluateIsolated<{ x: number; y: number } | null>(identityProbeScript(step.identity))
+              } catch {
+                center = null
+              }
+            }
+            if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
+              await page.input.click(Math.round(center.x * viewport.width), Math.round(center.y * viewport.height))
+            } else {
+              fallbacks += 1
+              await page.input.click(Math.round(step.x * viewport.width), Math.round(step.y * viewport.height))
+            }
+            break
+          }
+          case 'type':
+            await page.input.typeText(step.text ?? '')
+            break
+          case 'press':
+            await page.input.pressKey(step.key)
+            break
+          case 'scroll':
+            await page.input.scroll(step.deltaX, step.deltaY)
+            break
+        }
+        replayed += 1
+        this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `replay ${index + 1}/${steps.length}: ${step.kind}`, ok: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `replay failed at step ${index + 1} (${step.kind}): ${message.slice(0, 80)}`, ok: false, refused: 'policy' })
+        return { ok: false, refused: 'policy', message: `replay failed at step ${index + 1} (${step.kind}): ${message}`, replayed, fallbacks, name: safe }
+      }
+      // Breathe between steps — a replay should look like the human recording
+      // it came from, not a macro firing at the event loop.
+      await sleep(120 + Math.round(Math.random() * 160))
+    }
+    this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `replayed ${safe} — ${replayed}/${steps.length} steps, ${fallbacks} coordinate fallback(s)`, ok: true })
+    return { ok: true, replayed, fallbacks, name: safe }
+  }
+
   /**
    * Arm or disarm the console+network tap for the panel's debug drawer.
    *
@@ -944,6 +1182,7 @@ export class BrowserHostController {
         frameSuppression: { active: stats.suppressed.active, reason: stats.suppressed.reason },
         debugTap: session.debug.armed,
       },
+      ...(session.recording.active ? { recording: { active: true, name: session.recording.name, steps: session.recording.steps.length } } : {}),
       debug: {
         armed: session.debug.armed,
         supported: session.debug.supported,

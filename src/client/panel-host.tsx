@@ -492,6 +492,14 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     })
   }, [fetcher, controlToken, status, session])
 
+  const onToggleRecording = useCallback(() => {
+    if (!controlToken) return
+    const enabled = !(status?.recording?.active === true)
+    void sendSession(fetcher, controlToken, { kind: 'set-recording', enabled }).then(result => {
+      if (result.ok) session.refresh()
+    })
+  }, [fetcher, controlToken, status, session])
+
   const onTabSelect = useCallback((id: string) => {
     if (id === 'home') setView({ kind: 'home' })
     else setView({ kind: 'session', id })
@@ -561,7 +569,10 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
         <header style={headerStyles}>
           <div style={{ minWidth: 0, flex: '1 1 auto' }}>
             <div style={headerTitleStyles}>{status?.session?.label ? `Live browser · ${status.session.label}` : 'Live browser'}</div>
-            <div style={headerSubStyles}>{bootLabel(boot)}{status?.session?.desktopView ? ' · desktop view' : ''}</div>
+            <div style={headerSubStyles}>
+              {bootLabel(boot)}{status?.session?.desktopView ? ' · desktop view' : ''}
+              {status?.recording?.active ? <span style={recChipStyles} title={`recording workflow “${status.recording.name ?? ''}” — gestures are being captured as replayable steps`}>● REC {status.recording.steps}</span> : null}
+            </div>
           </div>
           <select
             style={selectStyles}
@@ -697,6 +708,23 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
               }
             >
               {status?.debug?.armed ? 'Debug tap ✓' : 'Debug tap'}
+            </button>
+          ) : null}
+          {!showingHome ? (
+            <button
+              type="button"
+              style={status?.recording?.active ? primaryButtonStyles('#f85149') : secondaryButtonStyles}
+              onClick={onToggleRecording}
+              disabled={!driving && !status?.recording?.active}
+              title={
+                status?.recording?.active
+                  ? 'stop recording and save the workflow (typed secrets become {{variables}} — never stored)'
+                  : driving
+                    ? 'record your gestures as a replayable workflow — demonstrate, then stop and name it'
+                    : 'take over first — a workflow records HUMAN gestures'
+              }
+            >
+              {status?.recording?.active ? '● Stop & save' : 'Record'}
             </button>
           ) : null}
           <span style={footerNoteStyles}>
@@ -914,6 +942,12 @@ function primaryButtonStyles(color: string): CSSProperties {
     background: `${color}22`,
     color,
   }
+}
+
+const recChipStyles: CSSProperties = {
+  color: '#f85149',
+  fontWeight: 600,
+  letterSpacing: '0.04em',
 }
 
 const footerNoteStyles: CSSProperties = {

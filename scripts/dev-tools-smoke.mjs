@@ -160,6 +160,10 @@ function makeStubHost(options = {}) {
     syncDesktopView: record('syncDesktopView', undefined),
     beginTakeover: record('beginTakeover', { ok: true }),
     endTakeover: record('endTakeover', { ok: true }),
+    setRecording: record('setRecording', options.recordingResult ?? { ok: true, name: 'checkout-demo', steps: 7, variables: ['password'] }),
+    listWorkflows: record('listWorkflows', options.workflows ?? [{ name: 'checkout-demo', steps: 7, variables: ['password'], createdAt: 1, startUrl: 'https://shop.test/' }]),
+    deleteWorkflow: record('deleteWorkflow', { ok: true }),
+    runWorkflow: record('runWorkflow', options.runResult ?? { ok: true, replayed: 7, fallbacks: 1, name: 'checkout-demo' }),
     takeoverActive: () => options.owner === 'user',
   }
 }
@@ -761,4 +765,57 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   step('observe reports sites that declare agent tools (WebMCP)', seen?.siteTools === true, JSON.stringify(seen?.siteTools))
 }
 
+
+{
+  // browser_workflow: record → replay wiring.
+  const { tools, host } = build()
+  const list = await run(tools, TOOL_NAMES.workflow, { action: 'list' })
+  step('workflow list returns saved workflows without a session', list?.ok === true && list.workflows?.[0]?.name === 'checkout-demo', JSON.stringify(list).slice(0, 140))
+  const start = await run(tools, TOOL_NAMES.workflow, { action: 'start' })
+  step('start arms recording through the host (no gate — the USER owns the pointer while demonstrating)', start?.ok === true && host.calls.some(c => c.name === 'setRecording' && c.args[1] === true), JSON.stringify(start).slice(0, 140))
+  const stop = await run(tools, TOOL_NAMES.workflow, { action: 'stop', name: 'checkout-demo' })
+  step('stop saves and reports required variables', stop?.ok === true && stop.variables?.includes('password') && host.history.some(h => h.entry.tool === 'browser_workflow' && /saved/.test(h.entry.summary)), JSON.stringify(stop).slice(0, 140))
+  const runNoName = await run(tools, TOOL_NAMES.workflow, { action: 'run' })
+  step('run without a name is refused with guidance', runNoName?.ok === false && /name/.test(runNoName.message ?? ''), JSON.stringify(runNoName).slice(0, 120))
+  const runIt = await run(tools, TOOL_NAMES.workflow, { action: 'run', name: 'checkout-demo', vars: { password: 'hunter2' } })
+  const runCall = host.calls.filter(c => c.name === 'runWorkflow').pop()
+  step('run replays through the host with vars (secrets live only in the call, never the file)', runIt?.ok === true && runIt.replayed === 7 && runIt.fallbacks === 1 && runCall?.args?.[2]?.password === 'hunter2', JSON.stringify(runIt).slice(0, 140))
+  const missingVars = build({}, { runResult: { ok: false, refused: 'policy', message: 'workflow checkout-demo needs variable(s): password — pass them in vars' } })
+  const refused = await run(missingVars.tools, TOOL_NAMES.workflow, { action: 'run', name: 'checkout-demo' })
+  step('a replay missing its secrets REFUSES rather than typing empty passwords', refused?.ok === false && /needs variable/.test(refused.message ?? ''), JSON.stringify(refused).slice(0, 140))
+  const del = await run(tools, TOOL_NAMES.workflow, { action: 'delete', name: 'checkout-demo' })
+  step('delete removes a saved workflow', del?.ok === true && host.calls.some(c => c.name === 'deleteWorkflow' && c.args[0] === 'checkout-demo'))
+  const userStart = build({}, { owner: 'user', recordingResult: { ok: false, refused: 'pointer-owned', message: 'recording captures HUMAN gestures — take over the pointer in the panel first, then demonstrate' } })
+  const userRes = await run(userStart.tools, TOOL_NAMES.workflow, { action: 'start' })
+  step('start while the user drives surfaces the host verdict verbatim', userRes?.ok === false && userRes.refused === 'pointer-owned', JSON.stringify(userRes).slice(0, 140))
+}
+
+{
+  // workflows module: the recorder/replay semantics, pure.
+  const wf = await import(pathToFileURL(join(root, 'lib', 'workflows.js')).href)
+  let steps = []
+  steps = wf.appendKeyEvent(steps, 'h', 'h', false)
+  steps = wf.appendKeyEvent(steps, 'i', 'i', false)
+  steps = wf.appendKeyEvent(steps, '!', '!', false)
+  step('printable keystrokes coalesce into one type step', steps.length === 1 && steps[0].text === 'hi!', JSON.stringify(steps))
+  steps = wf.appendKeyEvent(steps, 'Enter', undefined, false)
+  step('a function key becomes its own press step', steps.length === 2 && steps[1].kind === 'press' && steps[1].key === 'Enter', JSON.stringify(steps[1]))
+  const secretSteps = wf.appendKeyEvent(steps, 'x', 'x', true)
+  step('typing into a secret target stores a VARIABLE, never the text', secretSteps.length === 3 && secretSteps[2].kind === 'type' && secretSteps[2].variable === 'password' && secretSteps[2].text === undefined, JSON.stringify(secretSteps[2]))
+  const secretMore = wf.appendKeyEvent(secretSteps, 'y', 'y', true)
+  step('secret keystrokes never accumulate', secretMore.length === 3 && secretMore[2].variable === 'password', JSON.stringify(secretMore))
+  const names = wf.listVariableNames(secretMore)
+  step('listVariableNames finds required secrets in order', names.length === 1 && names[0] === 'password', JSON.stringify(names))
+  const inline = wf.listVariableNames([{ kind: 'goto', url: 'https://shop.test/u/{{username}}' }, { kind: 'type', text: 'pass={{password}}' }])
+  step('{{vars}} inline in URLs and text are detected', inline.includes('username') && inline.includes('password'), JSON.stringify(inline))
+  const resolved = wf.resolveVariables([{ kind: 'goto', url: 'https://shop.test/u/{{username}}' }, { kind: 'type', variable: 'password' }, { kind: 'click', x: 0.5, y: 0.5 }], { username: 'ada', password: 'pw' })
+  step('resolveVariables substitutes everywhere', resolved.missing.length === 0 && resolved.steps[0].url === 'https://shop.test/u/ada' && resolved.steps[1].text === 'pw' && resolved.steps[2].kind === 'click', JSON.stringify(resolved.steps))
+  const partial = wf.resolveVariables([{ kind: 'type', variable: 'password' }], {})
+  step('a missing variable is reported, never defaulted', partial.missing.length === 1 && partial.missing[0] === 'password')
+  step('workflow names are filesystem-safe', wf.sanitizeWorkflowName('../../etc/pa ss\'wd') === '..etcpa-sswd' || !wf.sanitizeWorkflowName('../../etc/pa ss\'wd').includes('/'), JSON.stringify(wf.sanitizeWorkflowName('../../etc/pa ss\'wd')))
+  const probe = wf.identityProbeScript({ tag: 'button', text: 'Buy now' })
+  step('the identity probe matches conservatively and returns normalized center', probe.includes('aria-label') && probe.includes('bestScore < 4') && probe.includes('innerWidth'), probe.slice(0, 80))
+  const capture = wf.identityCaptureScript(120, 80)
+  step('the capture probe flags password-shaped targets', capture.includes('elementFromPoint(120, 80)') && capture.includes("type === 'password'"), capture.slice(0, 80))
+}
 finish()

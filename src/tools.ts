@@ -1613,6 +1613,61 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     },
   })
 
+  const browserWorkflow = defineTool({
+    name: TOOL_NAMES.workflow,
+    description:
+      'Record a human demonstration once, replay it on demand. '
+      + 'start/stop arms recording of HUMAN gestures — the user takes over the pointer and demonstrates; stop saves a '
+      + 'plain-JSON step list under the browser profile (inspectable, hand-editable, reusable by name). '
+      + 'run replays with humanized input: identity-first element matching (role/name/placeholder), normalized-coordinate '
+      + 'fallback when the page shifted. list shows saved workflows; delete removes one. '
+      + 'SECRETS: anything typed into a password-shaped field is never stored — it becomes a required {{variable}} '
+      + 'you pass to run via vars.',
+    parameters: {
+      session: sessionSchema,
+      action: { type: 'string', enum: ['start', 'stop', 'list', 'run', 'delete'], required: true, description: 'start/stop = record; run = replay; list/delete manage saved workflows.' },
+      name: { type: 'string', description: 'Workflow name (start: optional label; run/delete: required).' },
+      vars: { type: 'object', additionalProperties: true, description: 'run: values for the workflow\'s {{variables}} — secrets go here at replay time, never into the saved file.' },
+    },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, name: { type: 'string' }, steps: { type: 'number' }, variables: { type: 'array', items: { type: 'string' } }, truncated: { type: 'boolean' }, workflows: { type: 'array', items: { type: 'object', additionalProperties: true } }, replayed: { type: 'number' }, fallbacks: { type: 'number' }, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    async execute(args) {
+      const action = String(args.action)
+      const name = typeof args.name === 'string' ? args.name : undefined
+      if (action === 'list') {
+        const workflows = await host.listWorkflows()
+        return { ok: true, workflows } as never
+      }
+      if (action === 'delete') {
+        if (!name) return { ok: false, message: 'delete needs the workflow `name`' } as never
+        return (await host.deleteWorkflow(name)) as never
+      }
+      const resolved = resolveSession(host, args.session)
+      if (!resolved.ok) return refusalValue(resolved) as never
+      if (action === 'start') {
+        // No gate() here on purpose: recording REQUIRES the user to own the
+        // pointer, which is exactly when gate() refuses. setRecording enforces it.
+        const result = await host.setRecording(resolved.sessionId, true, name)
+        if (result.ok) acted(resolved.sessionId, TOOL_NAMES.workflow, `recording started as ${result.name ?? 'workflow'}`)
+        return result as never
+      }
+      if (action === 'stop') {
+        const result = await host.setRecording(resolved.sessionId, false, name)
+        if (result.ok) acted(resolved.sessionId, TOOL_NAMES.workflow, `saved ${result.name ?? 'workflow'} — ${result.steps ?? 0} step(s)`)
+        return result as never
+      }
+      if (action === 'run') {
+        if (!name) return { ok: false, message: 'run needs the workflow `name` — see action:list' } as never
+        const gate = host.gate(resolved.sessionId)
+        if (!gate.ok) return refusalValue(gate) as never
+        const vars = (args.vars && typeof args.vars === 'object' ? args.vars : {}) as Record<string, string>
+        const result = await host.runWorkflow(resolved.sessionId, name, vars)
+        if (result.ok) acted(resolved.sessionId, TOOL_NAMES.workflow, `replayed ${name} — ${result.replayed ?? 0} step(s), ${result.fallbacks ?? 0} coord fallback(s)`)
+        return result as never
+      }
+      return { ok: false, message: 'action must be one of start/stop/list/run/delete' } as never
+    },
+  })
+
   // Keyed by WIRE NAME, not by local variable: consumers (the host entry's
   // effect labels, the smoke suites, third-party composition) all think in
   // `browser_click`, never `browserClick`.
@@ -1622,6 +1677,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     browserEvaluate, browserChallenge, browserHandoff, browserTakeover, browserTask, browserAct, browserDesktopView,
     browserCookies,
     browserFiles,
+    browserWorkflow,
   ]
   return Object.fromEntries(all.map(tool => [tool.name, tool]))
 }

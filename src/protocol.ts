@@ -83,6 +83,7 @@ export const TOOL_NAMES = {
   desktopView: 'browser_desktop_view',
   cookies: 'browser_cookies',
   files: 'browser_files',
+  workflow: 'browser_workflow',
 } as const
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES]
@@ -301,6 +302,7 @@ export type SessionMessage =
    */
   | { kind: 'set-desktop-view'; enabled: boolean; reload?: boolean }
   | { kind: 'set-debug-tap'; enabled: boolean }
+  | { kind: 'set-recording'; enabled: boolean; name?: string }
   /**
    * Start a browser from the panel's home tab, no model turn required.
    * Drive scope only: this launches a real process on the user's machine and
@@ -401,6 +403,8 @@ export interface BrowserStatus {
     /** Console+network tap armed — extra listeners on the page; a posture gap the user opted into. */
     debugTap: boolean
   }
+  /** Non-null while a workflow recording is armed — the panel shows a REC chip. */
+  recording?: { active: boolean; name: string | null; steps: number }
   /** Opt-in console+network feed for the panel's debug drawer. Ring-capped by the host. */
   debug?: {
     armed: boolean

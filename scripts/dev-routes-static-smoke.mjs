@@ -77,6 +77,7 @@ const host = {
   switchActive: record('switchActive', () => ({ ok: true, active: SESSION })),
   setDesktopView: record('setDesktopView', () => ({ ok: true })),
   setDebugTap: record('setDebugTap', () => ({ ok: true })),
+  setRecording: record('setRecording', () => ({ ok: true, name: 'demo' })),
   start: record('start', () => ({ ok: true, session: SESSION, label: null, phase: 'streaming', posture: { provider: 'patchright', humanize: true, applied: [], gaps: [] } })),
   stop: record('stop', () => ({ ok: true })),
   interactionsSince: () => ({ records: state.interactions, resync: false, latest: state.interactions.length }),
@@ -380,6 +381,18 @@ state.takeover = false
     method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'set-debug-tap', enabled: true }),
   })
   step('a view token cannot arm the tap (drive scope required)', tapView.status === 403, `got ${tapView.status}`)
+
+  // workflow recording toggle
+  const rec = await fetch(`${base}${protocol.SESSION_ROUTE_PATH}?token=${drive.control.token}`, {
+    method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'set-recording', enabled: true, name: 'checkout demo' }),
+  })
+  step('set-recording with drive scope succeeds', rec.status === 200, `got ${rec.status}`)
+  const recCall = state.calls.filter(c => c.name === 'setRecording').pop()
+  step('the recording flag + name reach the host', recCall?.args?.[1] === true && recCall?.args?.[2] === 'checkout demo', JSON.stringify(recCall?.args))
+  const recView = await fetch(`${base}${protocol.SESSION_ROUTE_PATH}?token=${viewGrant.control.token}`, {
+    method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'set-recording', enabled: true }),
+  })
+  step('a view token cannot arm recording', recView.status === 403, `got ${recView.status}`)
 
   // switch-session
   const switched = await fetch(`${base}${protocol.SESSION_ROUTE_PATH}?token=${drive.control.token}`, {

@@ -66,9 +66,9 @@ try {
 
   const list = await rpc('tools/list')
   const names = (list.result?.tools ?? []).map(t => t.name)
-  step('tools/list exposes the full registry (same count as the plugin)', names.length === 23, `got ${names.length}`)
+  step('tools/list exposes the full registry (same count as the plugin)', names.length === 24, `got ${names.length}`)
   step('every tool carries name + description + inputSchema', (list.result?.tools ?? []).every(t => typeof t.name === 'string' && typeof t.description === 'string' && t.inputSchema?.type === 'object'), '')
-  step('the bridge adds no tools of its own', names.includes('browser_start') && names.includes('browser_files') && names.includes('browser_act') && !names.some(n => !n.startsWith('browser_')), names.filter(n => !n.startsWith('browser_')).join(','))
+  step('the bridge adds no tools of its own', names.includes('browser_start') && names.includes('browser_files') && names.includes('browser_workflow') && names.includes('browser_act') && !names.some(n => !n.startsWith('browser_')), names.filter(n => !n.startsWith('browser_')).join(','))
 
   const status = await rpc('tools/call', { name: 'browser_status', arguments: {} })
   const statusValue = JSON.parse(status.result?.content?.[0]?.text ?? 'null')

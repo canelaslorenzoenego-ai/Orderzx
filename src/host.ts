@@ -31,6 +31,8 @@ import { InteractionTrace, type InteractionActor, type InteractionEvent, type In
 import { DEFAULT_CONFIG } from './protocol.js'
 import { AccessController, nextCapturePath, profileRoot } from './access.js'
 import { FrameLoop, withTimeout, type FrameStats } from './frames.js'
+import { compatReport } from './compat.js'
+import { PLUGIN_VERSION } from './protocol.js'
 import { probeEngine, resolveEngineProvider, EngineError, type EngineBrowser, type EnginePage, type EnginePosture } from './engine/index.js'
 import { navigationDwellMs, PRESETS, createRandom, sleep } from './engine/humanize.js'
 import {
@@ -1230,7 +1232,7 @@ export class BrowserHostController {
 
   status(id: string): BrowserStatus {
     const session = this.#sessions.get(this.resolveRef(id) ?? id)
-    if (!session) return { phase: 'idle', sessions: this.listSessions() }
+    if (!session) return { phase: 'idle', sessions: this.listSessions(), compat: compatReport(PLUGIN_VERSION) }
     const page = session.browser.activePage()
     const stats: FrameStats = session.frames.stats()
     const posture = session.browser.posture()
@@ -1295,6 +1297,7 @@ export class BrowserHostController {
         bytes: stats.bytes,
         lastCapturePath: session.lastCapturePath,
       },
+      compat: compatReport(PLUGIN_VERSION),
       takeover: session.owner === 'user' ? { since: session.takeoverSince ?? Date.now(), by: session.challenge ? 'agent-handoff' : 'user' } : undefined,
       challenge: session.challenge ?? undefined,
       stealth: {

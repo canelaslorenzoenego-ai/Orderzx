@@ -30,6 +30,7 @@ import { HomeTab } from './home-tab.js'
 import type { CSSProperties, ReactNode, PointerEvent as ReactPointerEvent } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { BrowserStatus, ControlMessage, FrameSource } from '../protocol.js'
+import { compatMode } from '../compat.js'
 import { FRAME_SOURCES } from '../protocol.js'
 import {
   claimPanelDock,
@@ -573,6 +574,11 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
           narrow={narrow}
         />
 
+        {compatMode(status?.compat) === 'compat' ? (
+          <div style={compatBannerStyles} data-compat-banner>
+            newer harness protocol (v{String(status?.compat?.protocol)}) — panel in compatibility mode: core views stay live, brand-new harness features may not appear here until the plugin updates
+          </div>
+        ) : null}
         <header style={headerStyles}>
           <div style={{ minWidth: 0, flex: '1 1 auto' }}>
             <div style={headerTitleStyles}>{status?.session?.label ? `Live browser · ${status.session.label}` : 'Live browser'}</div>
@@ -855,6 +861,12 @@ const resizeHandleStyles: CSSProperties = {
   cursor: 'col-resize',
   zIndex: 2,
   background: 'transparent',
+}
+
+const compatBannerStyles: CSSProperties = {
+  margin: '8px 12px 0', padding: '6px 12px', borderRadius: 8,
+  background: 'rgba(210,153,34,0.12)', border: '1px solid rgba(210,153,34,0.45)',
+  color: '#e3b341', fontSize: 11, lineHeight: '16px',
 }
 
 const headerStyles: CSSProperties = {

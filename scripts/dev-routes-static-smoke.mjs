@@ -15,7 +15,7 @@
  * missing so a partial tree does not read as a failure.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createMiniWebServer, createStepReporter, signToken } from './_smoke-harness.mjs'
@@ -32,6 +32,7 @@ if (!existsSync(routesPath)) {
 
 const { Routes } = await import(pathToFileURL(routesPath).href)
 const { AccessController, captureDir } = await import(pathToFileURL(join(root, 'lib', 'access.js')).href)
+const { compatReport } = await import(pathToFileURL(join(root, 'lib', 'compat.js')).href)
 const protocol = await import(pathToFileURL(join(root, 'lib', 'protocol.js')).href)
 
 const SESSION = 'sess-0123456789abcdef'
@@ -59,6 +60,7 @@ const host = {
     frames: { source: 'screenshot', fps: 4, lastSequence: 1, lastAt: Date.now(), bytes: 67, lastCapturePath: null },
     ...(state.takeover ? { takeover: { since: Date.now(), by: 'user' } } : {}),
     stealth: { humanize: true, fingerprintProfile: null, proxy: null, frameSuppression: { active: false, reason: null } },
+    compat: compatReport(protocol.PLUGIN_VERSION),
   }),
   // A real frame: the writer flushes headers on the first part, and with no
   // latest frame the stream test's fetch would await headers forever. The
@@ -160,6 +162,10 @@ state.takeover = false
   const captureAsStatus = await access.signCaptureToken(join(captureDir(), 'x.png'))
   const kindConfusion = await req(`${protocol.STATUS_ROUTE_PATH}?token=${encodeURIComponent(captureAsStatus.token)}`)
   step('status rejects a capture-kind token', kindConfusion.status === 403, `got ${kindConfusion.status}`)
+  const statusRes = await req(`${protocol.STATUS_ROUTE_PATH}?token=${encodeURIComponent(streamToken)}`)
+  const statusBody = statusRes.body
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+  step('status advertises the compat contract in lockstep with package.json', statusBody?.compat?.protocol === 1 && statusBody?.compat?.plugin === pkg.version && Array.isArray(statusBody.compat.guarantees) && statusBody.compat.guarantees.length >= 4, JSON.stringify(statusBody?.compat))
 }
 
 // ── control: scope separation ───────────────────────────────────────────────

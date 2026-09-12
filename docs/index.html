@@ -549,7 +549,7 @@
         <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linecap="round"><path d="M10 18s6.4-4.1 6.4-9A6.4 6.4 0 0 0 3.6 9c0 4.9 6.4 9 6.4 9z" stroke="none" fill="rgba(248,81,73,.14)"/><circle cx="10" cy="9" r="6.6"/><path d="M7.6 9h4.8M10 6.6v4.8" stroke="#f85149"/></svg>
       </div>
       <h3>Cookies without the leak</h3>
-      <p><code>browser_cookies</code> lists metadata only — name, domain, flags, expiry. Values are credentials and are stripped at the engine boundary, so a transcript can never become a credential dump.</p>
+      <p><code>browser_cookies</code> lists metadata only. Values are credentials, stripped at the engine boundary — a transcript can never become a credential dump.</p>
     </div>
     <div class="card rv">
       <div class="ico" style="background:rgba(103,232,249,.08)">
@@ -570,7 +570,7 @@
         <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="3.2" fill="rgba(248,81,73,.18)"/><circle cx="10" cy="10" r="7.2" stroke-opacity=".55"/><path d="M10 1.4v2M10 16.6v2" stroke-opacity=".55"/></svg>
       </div>
       <h3>Demonstrate once, replay by name</h3>
-      <p>Take over, show the flow, stop — it saves as plain-JSON <code>browser_workflow</code> steps. Replay matches elements by identity first, coordinates second, humanized always — in the foreground or as a cancellable background <code>browser_task</code> job with live progress. Password-shaped fields become required <code>{{variables}}</code>: secrets never touch the disk.</p>
+      <p>Take over, show the flow, stop — saved as plain-JSON <code>browser_workflow</code> steps. Replay matches identity first, coordinates second, humanized always — foreground or as a cancellable <code>browser_task</code> job. Password-shaped fields become <code>{{variables}}</code>: secrets never touch disk.</p>
     </div>
     <div class="card rv">
       <div class="ico" style="background:rgba(103,232,249,.08)">
@@ -743,7 +743,7 @@
     </div>
     <div class="tests-note rv">
       <span class="big" data-count="604">0</span>
-      <b>Green, end to end.</b> The live suite reloads the fixture to kill every ref and asserts the next click heals once and still lands; it plants an <b>HttpOnly</b> cookie and asserts the value never reaches a tool result. A suite that can't fail is a suite that proves nothing — these can.
+      <b>Green, end to end.</b> The live suite kills every ref with a reload and asserts the next click heals once and lands; it plants an <b>HttpOnly</b> cookie and asserts the value never reaches a tool result. Suites that can't fail prove nothing — these can.
     </div>
   </div>
 </section>

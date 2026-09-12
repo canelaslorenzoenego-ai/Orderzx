@@ -14,6 +14,9 @@
 /** Stable plugin name (the loader entry id in cordis.patch.yml). */
 export const PLUGIN_NAME = 'dsh-browser'
 
+/** Kept in lockstep with package.json by the routes smoke suite. */
+export const PLUGIN_VERSION = '0.2.0-rc.2'
+
 /** Every HTTP route lives under this prefix on the DSH webserver. */
 export const PLUGIN_ROUTE_PREFIX = '/_dsh/dsh-browser'
 
@@ -365,6 +368,8 @@ export interface ActionEntry {
 
 export interface BrowserStatus {
   phase: BootPhase
+  /** The compatibility contract block — absent means protocol 1. */
+  compat?: { protocol: number; plugin: string; guarantees: string[] }
   /** Every live browser — the panel renders one custom tab per entry. */
   sessions?: SessionSummary[]
   /** Last N actions on THIS session, newest last. The timeline drawer. */

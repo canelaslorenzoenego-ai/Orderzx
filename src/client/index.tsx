@@ -52,6 +52,7 @@ export { BrowserFrame, FRAME_STYLE_CHROME, FRAME_STYLE_MINIMAL, FRAME_STYLE_FRAM
 export { LiveViewport, useStreamSession, normalizePointer, STALL_MIN_MS, STALL_MULTIPLIER, STATUS_POLL_MS, STREAM_PHASES, type StreamPhase, type StreamSession } from './live-viewport.js'
 export { StatusCapsule, MonitorGlyph, CAPSULE_KEYFRAMES, CAPSULE_POLL_MS, capsuleStyles, autoOpenDecision, createCapsulePoller, installCapsuleKeyframes } from './status-capsule.js'
 export { captionOfEvent } from '../interactions.js'
+export { compatMode, PROTOCOL_VERSION } from '../compat.js'
 export { browserPanelStore, createPanelStore, mountBrowserPanelHost, usePanelRequest, type PanelHost, type PanelRequest, type PanelStore } from './panel-host.js'
 export { BrowserCard, BootCard, ChallengeCard, describeTarget, type BrowserCardProps, type CardTone } from './cards.js'
 export { CARD_STYLES } from './card-styles.js'

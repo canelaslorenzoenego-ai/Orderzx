@@ -1,415 +1,156 @@
-![Orderzx — an autonomous, stealth-first browser for DeepSeek Harness: the wordmark over a dark neon grid beside an animated panel mock with session tabs, a live page stream and the agent's ghost cursor](docs/assets/orderzx-banner.svg)
-
-<div align="center">
-
-[![version](https://img.shields.io/badge/version-v0.2.0--rc.1-1f6feb?style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.2.0-rc.1)
-[![platform](https://img.shields.io/badge/platform-Chromium_150%2B_%C2%B7_3_engines-238636?style=flat-square)](#what-it-is)
-[![smoke tests](https://img.shields.io/badge/smoke_tests-604%2F604_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
-[![ci](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml/badge.svg)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml)
-[![backend](https://img.shields.io/badge/backend-none_%C2%B7_on--loopback-9a6700?style=flat-square)](#security-posture)
-[![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
-[![ci](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml/badge.svg)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml)
-
-:globe_with_meridians: [Website](https://canelaslorenzoenego-ai.github.io/Orderzx/) · :arrow_down: [Download the release](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.2.0-rc.1) · :compass: [Architecture](#what-it-is) · :hammer_and_wrench: [Build from source](#install) · :question: [FAQ](#dual-use--read-this)
-
-</div>
-
-*The showcase site is a single self-contained file at [`docs/index.html`](docs/index.html), served by GitHub Pages.*
-
 # Orderzx
 
 **A live, stealth-capable, autonomous Chrome inside your DeepSeek Harness conversation** — the `dsh-browser` plugin.
 
-The agent drives a real browser with humanized input; you watch every click,
-swipe and keystroke happen in a docked dashboard panel, and you can grab the
-mouse at any moment. When a site throws a CAPTCHA that automation shouldn't
-solve, the agent pauses and hands the widget to **you** — in-session, with your
-own fingerprint and IP, which is the one solve method that always works.
+[![ci](https://img.shields.io/github/actions/workflow/status/canelaslorenzoenego-ai/Orderzx/ci.yml?branch=main&style=flat-square&label=build)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions)
+[![smoke tests](https://img.shields.io/badge/smoke_tests-610%2F610_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
+[![release](https://img.shields.io/github/v/release/canelaslorenzoenego-ai/Orderzx?include_prereleases&style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases)
+[![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
+
+The agent drives a real browser with humanized input. You watch every click,
+scroll and keystroke live in a docked dashboard — and you can grab the mouse
+anytime. CAPTCHAs pause the agent and hand the widget to **you**, in-session,
+with your own fingerprint and IP: the one solve that always works.
+
+**Zero cloud. Zero accounts.** Everything runs on `127.0.0.1`.
 
 ![The boot sequence: capsule pops on the chatbar, the dashboard extends, the live stream paints, and the agent's gestures animate over the frames](docs/assets/boot-sequence.svg)
 
-*The whole flow, animated: capsule pop → dashboard extend → boot phases → live
-stream → ghost-cursor gestures → a CAPTCHA handoff. Timings are the real ones
-from the shipped code (320 ms pop, 420 ms `AUTO_OPEN_DELAY_MS`, 180 ms slide-in).*
-
-The boot sequence is one continuous motion: the **capsule pops** on the chatbar
-→ the **dashboard extends** → boot phases play inside the panel → the **live
-stream** paints → gesture animations (cursor path, click ripples, focus rings,
-scroll arrows, swipe trails, typing counters) run over the frames in real time.
-
 ```
 you:  "book me a table at X"
-        ┌──────────── chatbar ────────────┐
-        │  🖥 ▸ starting browser…          │   ← capsule: monitor animation
-        └─────────────────────────────────┘
-        ┌──────────── dashboard extends ─────────────┐
-        │  Home │ shopper │ researcher    [screenshot ▾] [×] │  ← one tab per sub-agent browser
-        │  ┌──────────────────────────────────────┐  │
-        │  │  ◀ ▶ ⟳  https://restaurant.example   │  │  ← real frame stream
-        │  │     (the page, live — and you can    │  │
-        │  │      see the agent's ghost cursor    │  │
-        │  │      move, click, type, swipe)       │  │
-        │  └──────────────────────────────────────┘  │
-        │  ▸ timeline (every action, newest first)   │
-        │  [ Take over ]   1366×768 · humanized      │  ← your mouse, on request
-        └────────────────────────────────────────────┘
+   chatbar   🖥 ▸ starting browser…            ← capsule monitor animation
+   dashboard extends ────────────────────────────────────────┐
+   │ Home │ shopper │ researcher      [screenshot ▾] [×]     │ ← tab per sub-agent
+   │  ◀ ▶ ⟳  https://restaurant.example                      │
+   │     live frames + the agent's ghost cursor clicking      │
+   │  ▸ timeline (every action, newest first)                 │
+   │  [ Take over ]   1366×768 · humanized                    │ ← your mouse, on request
+   └──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## What it is
+## See it think
 
-- **24 model-facing tools** — `browser_start/stop/status`, `browser_observe`,
-  **`browser_see`** (set-of-marks screenshots — the model's eyes),
-  **`browser_desktop_view`** (Chrome-for-Android "Request desktop site", for the
-  agent too), `browser_act` (deterministic natural-language actions with a
-  confidence gate, and a deterministic identity-verified act cache), `browser_click/type/press/scroll/navigate/tabs/fill_form/extract/wait`,
-  `browser_evaluate` (config-gated), `browser_challenge`, `browser_handoff`,
-  **`browser_cookies`**, **`browser_files`** (uploads fenced to the profile root,
-  downloads saved under it), **`browser_clip`** (sample real frames into a replayable clip that is delivered to the session AND handed back as a chat-ready line), **`browser_transcript`** (read what a video says without hearing it), **`browser_workflow`** (record a human demonstration,
-  replay it by name), `browser_takeover`, **`browser_task`** (saved workflows as
-  cancellable background jobs with live progress).
-- **Record once, replay by name** — take over, demonstrate, stop: the gestures
-  become a plain-JSON workflow under the browser profile. Replay is
-  identity-first (role/name/placeholder) with normalized-coordinate fallback and
-  humanized pacing. Typed secrets are **never stored** — password-shaped fields
-  become required `{{variables}}` you pass at replay, and a missing one refuses
-  the run instead of typing an empty password.
-- **Contracts, not vibes** — `browser_extract` accepts a JSON `schema` with your
-  structured `data` and validates it (exact violation paths + a deeper text pass
-  for repair); `browser_fill_form` reads every field back after filling and
-  reports `{expected, actual}` per field. `browser_observe` reports sites that
-  declare agent tools via WebMCP (`siteTools`), detect-only.
-- **MCP bridge** — `dsh-browser-mcp` speaks stdio JSON-RPC over the exact same
-  tool layer, so any MCP client can drive it. Zero tools added, zero policies
-  relaxed: on stdio there is no panel to hand off to, so a blocking challenge is
-  reported, never silently solved.
-- **Opt-in debug drawer** — arm the console+network tap from the panel and a
-  drawer renders both feeds; while armed, the posture says so plainly
-  (`stealth.debugTap`) because extra listeners are a detectable surface.
-- **Self-healing refs** — when a page re-renders and a ref dies mid-task,
-  `browser_click`/`browser_type` re-snapshot once and look for the element's
-  identity (role + accessible name) in the fresh tree. Exactly one match → the
-  action continues on the new ref and the result says `healedFrom`; zero or
-  several → it fails loudly with "observe again" instead of guessing between
-  "Delete" and "Cancel". Every heal is announced on the timeline, never silent.
-- **Cookies without the credential leak** — `browser_cookies` lists cookie
-  **metadata** (name, domain, flags, expiry) so the model can check whether a
-  login persisted or which trackers a site planted; values are stripped at the
-  engine boundary and can never reach a transcript. Clearing requires an
-  explicit domain — there is no wipe-everything mode.
-- **Eyes the model can point at** — `browser_see` returns the screenshot with
-  every interactive element **numbered on it** (set-of-marks, the technique
-  behind vision-first agents) plus a `mark → ref → box` table. `browser_click`
-  and `browser_type` accept `mark: 7` as an alias. Marks die exactly when refs
-  die — on navigation — so a stale mark can never silently click something new.
-  On a text-only model it degrades to the table alone, which is still a
-  visibility-filtered element list.
-- **Sub-agent browsers** — label a session at launch
-  (`browser_start({ label: "researcher" })`); every tool's `session` param
-  accepts the label. One custom tab per browser in the panel — origin-avatar,
-  live-phase pulse, desktop-view badge, and an × that closes just that browser
-  (`stop-browser`, drive scope) — independent pointer ownership each, parallel
-  by design.
-- **See the model's hands** — a gesture channel (SSE) animates the agent's
-  pointer path, click ripples, target outlines, scroll arrows, swipes and
-  keystroke counts over the live frames. When `browser_see` runs, the numbered
-  overlay flashes on the stream too: you see precisely what the model saw.
-- **Not just the chat panel** — `GET /_dsh/dsh-browser/panel` serves the whole
-  dashboard as a **standalone page** for any browser on the loopback fence: a
-  second desktop profile, a wall screen, or **your Android phone via
-  `adb reverse`** (see below). Same components, same tokens, no DSH web required.
-- **Desktop view, done properly** — the panel toggle (and `browser_desktop_view`)
-  mirrors Chrome-for-Android's "Desktop site" in all three places sites check:
-  UA string, **UA client hints** (`sec-ch-ua-mobile: ?0`, full brand list,
-  Windows platform — headers, JS API and UA never contradict each other), and
-  touch emulation (dropped on touch-capable devices, restored on clear). It
-  applies to **every tab** of the session, syncs tabs opened afterwards, and
-  **reloads the active tab** — because the UA is a request header, and without a
-  new request the server keeps serving the mobile HTML it already chose.
-- **Tiered frame transport** — on-demand JPEG screenshots by default (lowest
-  detection surface), CDP screencast behind a flag, DOM-tier synthetic SVG for
-  text-only hosts. The panel switches tiers live.
-- **Engine seam** — [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-node)
-  by default (drop-in Playwright fork, real Chrome via `channel: 'chrome'`),
-  [CloakBrowser](https://github.com/CloakHQ/CloakBrowser) as an alternative
-  provider, or attach to your own already-running Chrome over CDP (including a
-  real Chrome on Android).
-- **Four-tier challenge pipeline** — prevention → detection/classification →
-  free & local (proof-of-work self-solve, extension adapters) → licensed solver
-  API (opt-in, per-domain allowlist + one-shot approval, audited) → **human
-  handoff in the panel as the default terminal tier**.
-- **Humanized input** — Bézier pointer paths with overshoot-and-correct, dwell
-  before press, realistic keystroke timing distributions, decelerating scroll.
-  The model's clicks look like clicks.
-- **Panel start page + timeline** — first open lands on a home tab (launch a
-  browser yourself, jump into running ones); a timeline drawer lists every
-  action with its outcome — a session recorder at the honest scale.
-- **Capability-tokened routes** — every stream/capture/control request carries
-  an HMAC capability scoped to one session and one permission (`view` vs
-  `drive`), fenced behind loopback + Fetch-Metadata checks.
+- **Live stream you can grab** — on-demand screenshots by default, CDP
+  screencast by flag, DOM fallback when capture is blocked. Takeover swaps the
+  ghost cursor for an amber "you" hand; gestures stay actor-tagged forever.
+- **Gesture captions** — a chip on the stream narrates intent in words:
+  `click "Sign in"`, `scroll down 480px`, `you · type 12 chars`.
+- **Ask for the video, get the video** — `browser_clip` samples real frames and
+  delivers them to the session *and* hands the model a `chatLine` it pastes
+  verbatim into chat. Replays draw the model's hand back over the frames.
+- **`browser_reel`** — one call → one standalone HTML artifact: frames +
+  gesture track + scrubber, zero dependencies, signed URL, sandbox CSP.
+- **Video-aware boost** — a playing `<video>` tightens the stream to ~3 fps so
+  motion reads as motion; `browser_transcript` reads what a video *says*.
 
-## Android phone: the full dashboard in your pocket
+## What it does
 
-Two supported setups, no LAN exposure either way:
+- **27 tools** — observe/act/type/press/scroll/navigate/tabs/extract, forms,
+  evaluations behind a policy gate, workflows (record a human demo → replay),
+  background jobs with live progress, cookies (metadata only), fenced files.
+- **Stealth that reports honestly** — Patchright by default (suppressed CDP
+  tells), CloakBrowser fork optional, humanized input, per-session fingerprints.
+  The posture endpoint says what the engine *actually* does.
+- **CAPTCHA = handoff, not solving** — challenge detected → agent pauses →
+  widget renders in your session → you solve → agent resumes with context.
+- **Self-heal** — refs killed by a reload re-resolve from element identity;
+  coordinates are the last resort, never the first.
+- **Workflows & jobs** — record your mouse, replay it humanized; password-shaped
+  fields become required `{{variables}}`, so secrets never touch disk.
 
-1. **DSH web on the phone** — the panel detects narrow viewports and switches
-   to a full-screen overlay layout: edge-to-edge stream, bigger tab targets,
-   thumb-reachable takeover controls. The **desktop-view toggle** turns the
-   phone into a window onto a desktop-class browser (see above for what it
-   actually changes under the hood).
-2. **Standalone panel via `adb reverse`** — with the host running on your
-   machine:
+## Android phone
 
-   ```sh
-   adb reverse tcp:PORT tcp:PORT     # PORT = whatever your DSH web server listens on
-   # then, in Chrome ON THE PHONE:
-   #   http://localhost:PORT/_dsh/dsh-browser/panel
-   ```
+`dsh-android` ships the same dashboard over ADB/WireGuard: the phone renders
+frames and gestures from your desktop session. Watch-only by design.
 
-   (Find PORT in the host's startup log; DSH's dev web server prints it. The
-   route is mounted under the plugin prefix `/_dsh/dsh-browser`.)
+## Compatibility contract
 
-   `adb reverse` makes the host's loopback the phone's loopback, so the
-   transport fence (loopback-only, by design) is satisfied without ever
-   exposing a port to the network. The page is a single self-contained HTML
-   file (`pnpm run build:standalone` → `lib/standalone.html`) that mounts the
-   exact same panel components.
+Built to survive any dsh-web / Cordis generation, past or future:
 
-![The narrow phone layout: full-screen panel with touch-sized tabs, a desktop-view site streaming inside, tap ripple and focus outline from the agent, and the turnstile handoff banner waiting for a human](docs/assets/panel-phone-narrow.png)
+- **Structural, not nominal** — type-checks against both `cordis` and
+  `@deepseek-ai/cordis`; optional services (approval, vision) are feature-detected
+  via `ctx.inject([...])`, never required.
+- **Additive-only wire changes** — fields appear, never disappear or retype.
+  Readers ignore unknown fields, so old payloads always parse in new builds.
+- **Versioned protocol** — `status.compat` carries `{protocol, plugin, guarantees}`.
+  A newer harness degrades the panel to a visible banner, never a blank screen.
+- **Three surfaces only** — `mountRoutes`, `ctx.effect` tool registration and the
+  signed-route fence: the contract the harness has never had to change.
+- **Node ≥ 20**, no native deps, no pinned harness version.
 
-*Narrow layout with desktop view ON: the phone shows a 1366×768 desktop site
-while the agent works it — and when a CAPTCHA appears, the amber handoff
-banner pauses everything until you tap **solved**.*
-
-## The boot sequence
-
-1. **Capsule** — a small CRT-monitor animation appears above the composer
-   (`spinning-up → warming → hardening → connecting`), driven by real host
-   phases, never a fake timer.
-2. **Extend** — when the browser exists, the dashboard extends: the panel docks
-   as a right-hand column and pushes the conversation over (it leases the
-   margin and restores exactly what it found; if another plugin owns the dock,
-   it falls back to an overlay). On a phone it slides over full-screen.
-3. **Live** — the frame stream paints. The capsule hides; the panel shows frame
-   tier, fps, suppression state, and who owns the pointer.
-
-## Try it in DSH web — exactly what happens
-
-1. **Install** (DSH ≥ `0.1.5-rc.2`, Node ≥ 24.11):
-
-   ```sh
-   dsh install @dsh-community/dsh-browser
-   npm i patchright && npx patchright install chrome   # in your profile dir
-   ```
-
-2. **Ask the agent for anything browser-shaped** — "open amazon and find…",
-   "check my flight status". The model calls `browser_start`.
-3. **Watch the chatbar**: a small CRT-monitor capsule **pops** above the
-   composer and animates through the real boot phases (`spinning-up →
-   warming → hardening → connecting`) — it is driven by host phase events,
-   never a fake timer.
-4. **~0.4 s after the capsule pops, the dashboard extends**: the panel docks
-   as a right-hand column (conversation slides over) or covers the screen on a
-   phone. Boot continues inside the panel.
-5. **The live browser appears**: real JPEG frames at 3–5 fps. When the model
-   acts, you see its ghost cursor travel the Bézier path, the click ripple,
-   the focus ring, scroll arrows, swipe trails, and a keystroke counter while
-   it types. When it calls `browser_see`, the numbered set-of-marks overlay
-   flashes on the stream — you see exactly what the model saw.
-6. **Grab the mouse any time**: *Take over* pauses the agent (its tools return
-   typed `pointer-owned` refusals — no fighting over one cursor); *Resume*
-   hands it back. A CAPTCHA flips this around: the agent pauses and the panel
-   asks **you** to solve it.
-
-![The docked dashboard on desktop: one custom tab per sub-agent browser, the action timeline, the live page with the agent's click ripple mid-action, and Take over in the footer](docs/assets/panel-desktop-dark.png)
-
-*Illustrative render of the docked layout — every component in it is real
-shipped code; run `node demo/server.mjs` to drive the actual ones.*
-
-If the dashboard does not extend, it is one of three things, in order of
-likelihood:
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| No capsule at all | client bundle not mounted | check the DSH devtools console for `dsh-browser-client`; confirm the plugin's `dsh.client.inject` packages resolved |
-| Capsule sits at `spinning-up` | no engine available | `npm i patchright` **in the profile directory**, or set `engine.provider: cdp` + `engine.cdpEndpoint` and launch Chrome yourself with `--remote-debugging-port=9222` |
-| Capsule fine, panel never opens | another plugin owns the dock | the panel auto-falls back to an overlay — if even that is missing, check `browser_status` in the conversation for the phase it is stuck on |
+Enforced by smoke steps that feed the suites yesterday's manifests, tomorrow's
+unknown fields and mismatched protocol numbers.
 
 ## Verified end-to-end
 
-Three layers of evidence, all runnable from this checkout:
+**610 checks, all runnable from this checkout:**
 
-- **559 static assertions** (`pnpm test`, no browser): tools, routes over real
-  HTTP, frame transport, engine emulation, the MCP bridge spoken over a real
-  spawned child's stdio, and the client bundle SSR'd in Node.
-- **30 live assertions** (`pnpm run test:live`, real Chrome): start → streaming
-  → frames → observe → ref click on a real DOM → signed stream/capture routes →
-  takeover refusals → dispose.
-- **15 e2e assertions** (`pnpm run test:e2e`, real Chrome): the exact DSH-web
-  chain — real host + real signed routes + **the real client bundle's** wire
-  functions, capsule poller, `autoOpenDecision` (the dashboard-extend trigger),
-  and boot state machine, through to real JPEG frame bytes on the stream and a
-  real tool click arriving as a gesture record on the interactions SSE, with
-  the real panel components rendered against the real host status.
+| suite | checks | proves |
+|---|---|---|
+| tools | 200 | every tool against an emulated engine, refusals, scoring |
+| routes | 77 | fence-before-capability, token scopes, capture containment, compat |
+| frames | 72 | transports, tiers, suppression, boost cadence |
+| panel | 202 | the real client bundle SSR'd: capsule, overlay, drawers, players |
+| mcp | 13 | the bridge over a real spawned child's stdio |
+| live | 31 | real Chromium over CDP: start → stream → click → heal → clips → reels |
+| e2e | 15 | real host + real routes + real bundle, end to end |
 
-All three run green against system Chromium over CDP in a headless CI
-container — `DSH_BROWSER_LIVE_PROVIDER=cdp DSH_BROWSER_LIVE_CDP=http://127.0.0.1:9222`
-— so the attach path (including Chrome on Android) is a first-class, tested
-engine: real aria-snapshot refs, real `boxOf`, real CDP screencast.
-
-## Takeover & handoff
-
-- **Takeover** (you → agent): click *Take over*; the host pauses agent input,
-  re-mints your token with `drive` scope, the agent's ghost pointer hides (that
-  cursor is yours now), and every model-facing tool returns a typed
-  `pointer-owned` refusal until you resume. No queueing, no fighting over one
-  mouse.
-- **Handoff** (agent → you): `browser_handoff` blocks the agent, suppresses the
-  persistent frame transport, focuses the challenge widget, and waits for you
-  to report *solved / failed / skip*. The agent resumes from the exact DOM
-  state. This is Cloudflare's "Human in the Loop" pattern, in-conversation.
-
-## How it compares
-
-| | Orderzx / dsh-browser | browser-use | Stagehand | Skyvern | Playwright MCP |
-|---|---|---|---|---|---|
-| Perception | a11y refs **+ set-of-marks vision** | DOM/a11y | DOM/a11y | vision-first | a11y |
-| Live UI for the user | **streamed panel + gesture overlays** | cloud view | — | cloud view | — |
-| Human takes the mouse | **yes, in-panel, token-scoped** | HITL prompts | — | — | — |
-| CAPTCHA | **4-tier pipeline → human handoff default** | 3rd-party | 3rd-party | solver service | — |
-| Anti-detection | **Patchright/CloakBrowser engine seam, honest posture reporting** | — | — | — | — |
-| Multi-browser sub-agents | **yes, labelled sessions, per-tab UI** | parallel agents | — | — | — |
-| Runs inside | DeepSeek Harness conversations | anywhere (Python) | anywhere (TS/Py) | cloud | MCP clients |
-
-`00-RESEARCH.md` is the full brief behind these choices, including the 2026
-stealth-benchmark landscape (and why the benchmarks disagree) and a gap table
-vs. the tools above.
+```bash
+pnpm test            # 564 static assertions, no browser needed
+pnpm run test:live   # 31 against a real Chrome (opt-in)
+pnpm run test:e2e    # 15: host + routes + client bundle + Chrome
+```
 
 ## Install
 
-One command (clone + build + print the cordis patch line):
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/canelaslorenzoenego-ai/Orderzx/main/scripts/install.sh | sh
+```bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/latest/download/install.sh | bash
 ```
 
-Or by hand:
-
-Requires DeepSeek Harness `0.1.5-rc.2`, Node ≥ 24.11, pnpm.
-
-```sh
-dsh install @dsh-community/dsh-browser     # or add to your bundle
-```
-
-Optional engines (lazy-loaded; nothing downloads until configured):
-
-```sh
-npm i patchright            # default engine
-npx patchright install chrome
-```
+Or clone and `pnpm install && pnpm run build`, then add `dsh-browser` to your
+harness plugin list. Release assets: `install.sh` + a sample replay reel.
 
 ## Configuration
 
-Everything ships safe-by-default; see `src/config.ts` for the full Cordis
-schema. The parts worth knowing:
+Everything is YAML with defaults; nothing security-relevant is a tool argument.
 
-```yaml
-dsh-browser:
-  engine:
-    provider: patchright        # patchright | cloakbrowser | cdp
-    channel: chrome             # real Chrome, not bundled Chromium
-    humanize: true
-    proxy: null                 # e.g. http://user:pass@host:port
-  frames:
-    source: screenshot          # screenshot | screencast | dom
-    maxFps: 5
-    suppressOnChallenge: true   # stop persistent capture during handoff
-  policy:
-    allowEvaluate: false        # browser_evaluate is off until you say so
-    approvalForSensitiveActions: true   # pay/publish/delete/send → one-shot prompt
-  challenge:
-    solverApi: null             # tier 3 stays off until you supply a key
-    allowDomains: []            # ...and even then, only these domains
-```
+| key | default | meaning |
+|---|---|---|
+| `engine.provider` | `patchright` | `patchright` · `cloakbrowser` · `cdp` (attach your own) |
+| `engine.humanize` | `true` | bezier pointers, jittered keys, honest posture |
+| `frames.source` | `screenshot` | `screenshot` · `screencast` · `dom` |
+| `frames.maxFps` | `5` | capture cadence = detection surface; boost tightens only for playing video |
+| `policy.approvalForSensitiveActions` | `true` | harness approval prompts for sensitive verbs |
+| `policy.allowEvaluate` | `false` | arbitrary page JS is a config gate, not a model right |
 
 ## Security posture
 
-- Credentials (proxy auth, solver API keys) live in host config and are **never**
-  accepted as tool arguments, never echoed in results, never logged.
-- `browser_type` with `secret: true` redacts the text from every result.
-- Capture paths are contained to the cache directory (symlink-refusing walk +
-  realpath check); SSRF policy fences `browser_navigate`.
-- Sensitive actions fail **closed** when the host has no approval service.
-- Tokens are HMAC-signed, ≤ 10-minute TTL, kind-scoped (a stream token cannot
-  drive; a capture token cannot read status). The standalone panel page is
-  fence-only HTML with no secrets — its capabilities still come from the
-  origin-fenced `/grant` like everything else.
-- Desktop view never re-fingerprints mid-challenge: the toggle is refused while
-  a handoff is pending, because mutating the environment during a bot probe is
-  exactly what the probe scores.
+- Loopback-only routes, origin-fenced, capability tokens with TTLs and scopes.
+- Captures and reels are `0o600`; cookie **values** never leave the browser;
+  typed text never reaches the timeline; reels serve behind `default-src 'none'`.
+- Takeover is monotonic-guarded; tools refuse with `pointer-owned` while you drive.
+- No telemetry, no phone-home, no accounts — audit the whole surface in `src/routes.ts`.
 
-## Demo (no Chrome required)
+## Demo & development
 
-`demo/` is a self-contained harness that renders the **real shipped components**
-from `lib/client.js` against a scripted transport — the full sequence: capsule
-pop → dashboard extend → home tab → session tab → ghost-cursor gestures →
-typing → scroll → swipe → turnstile handoff (press *solved*) → a second
-"researcher" tab. Phone and desktop-view toggles included.
-
-```sh
-node demo/server.mjs        # → http://localhost:8123
+```bash
+pnpm run demo          # standalone HTML dashboard, no Chrome required
+pnpm run build         # server + client + standalone artifact
+pnpm test              # static suites
 ```
 
-## Development
+Smoke suites import the compiled `lib/` — build first. Live suites need a
+`--remote-debugging-port=9222` Chrome or use the bundled fixture.
 
-```sh
-pnpm install
-pnpm run build              # host (tsc) + client (tsdown → lib/client.js) + standalone (→ lib/standalone.html)
-pnpm run build:standalone   # just the standalone panel page
-pnpm run typecheck
-pnpm test                   # 5 static smoke suites, 559 assertions, no browser needed
-pnpm run test:live          # 30 assertions against a real Chrome (opt-in)
-pnpm run test:e2e           # 15 assertions: real host + real routes + real client bundle
-```
+## Credits & license
 
-The live and e2e suites accept `DSH_BROWSER_LIVE_PROVIDER=cdp` +
-`DSH_BROWSER_LIVE_CDP=http://127.0.0.1:9222` to attach to any running
-Chrome/Chromium instead of launching one — that is how CI (and an Android
-phone over adb) runs them.
-
-The smoke suites import the **compiled** `lib/*.js` and cover: tool refusals,
-JSON losslessness, approval gating, the set-of-marks pipeline and mark-alias
-lifecycle (`dev-tools-smoke`); the capability fence, scope separation, path
-containment and the standalone panel route over real HTTP
-(`dev-routes-static-smoke`); frame tiers/suppression/multipart wiring and the
-desktop-view emulation including UA client hints and touch handling
-(`dev-frame-static-smoke`); and the client bundle SSR'd in Node — boot state
-machine, dock geometry, pointer normalization, wire helpers, cards, and the
-host↔client `presentationMeta` twin-sync that keeps Code-mode (PTC) cards
-identical to standard ones (`dev-panel-smoke`).
-
-## Credits
-
-Patterns for the boot capsule, docked panel host, capability tokens, and
-multipart frame transport follow [dsh-android](https://github.com/ZSeven-W/dsh-android)
-by ZSeven-W. Engine work stands on
-[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-node) and
-[CloakBrowser](https://github.com/CloakHQ/CloakBrowser). The set-of-marks
-technique follows Yang et al. (2023); the human-in-the-loop and live-view
-patterns match what Cloudflare Browser Rendering shipped in 2026.
-
-## License
-
-MIT — see [LICENSE](./LICENSE). Security policy: [SECURITY.md](./SECURITY.md).
+Patterns borrowed with gratitude from `dsh-android`, browser-use, Stagehand and
+Patchright research. MIT — see [LICENSE](LICENSE).
 
 ## Dual use — read this
 
-Stealth and CAPTCHA tooling is dual-use. This plugin is built for **sites you
-own or are authorised to test**, and for the legitimate case the CAPTCHA
-industry itself endorses: a real human solving a real challenge in a real
-session. The licensed-solver tier ships off, requires your own API key, a
-per-domain allowlist, and an interactive approval per domain, and writes an
-audit record for every attempt. `browser_evaluate` — the one tool that could
-tamper with page security — is config-gated off by default. Don't point this at
-sites that don't want you; they'll know, and so will we.
+Autonomous browsing can violate site terms and local law. This plugin defaults
+to handoff-over-solving, metadata-over-values and honesty-over-stealth for a
+reason: run it on systems you own, against sites that allow automation.

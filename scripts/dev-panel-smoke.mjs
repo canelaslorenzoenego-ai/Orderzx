@@ -575,6 +575,9 @@ const el = React.createElement
   const clipHtml = renderToString(el(TimelineDrawer, { entries: [clipEntry], open: true, onToggle: () => {} }))
   step('clip rows carry the film glyph and an inline player shell', clipHtml.includes('data-toolicon="clip"') && clipHtml.includes('data-clip-id="clip-x1"') && clipHtml.includes('loading clip'), '')
   step('the player shell carries a gesture-caption slot', clipHtml.includes('data-gesture-caption'), '')
+  step('compat modes: same=ok, newer harness=compat banner, absent=unknown', client.compatMode({ protocol: 1 }) === 'ok' && client.compatMode({ protocol: 99 }) === 'compat' && client.compatMode(undefined) === 'unknown' && client.compatMode({ protocol: 0 }) === 'ok', '')
+  const futureHost = renderToString(el(TimelineDrawer, { entries: [{ ts: stamp, tool: 'browser_quantum_fold', summary: 'folded spacetime', ok: true }], open: true, onToggle: () => {} }))
+  step('unknown future tools render with the fallback glyph, never crash', futureHost.includes('data-toolicon="quantum_fold"') && futureHost.includes('folded spacetime'), '')
   step('gesture captions narrate without leaking content', client.captionOfEvent({ type: 'scroll', deltaX: 0, deltaY: 320 }) === 'scroll down 320px' && client.captionOfEvent({ type: 'click', x: 0.1, y: 0.2, button: 'left', ref: 'e12', label: 'Sign in' }) === 'click “Sign in”' && client.captionOfEvent({ type: 'type', characters: 8, secret: false }) === 'type 8 chars', '')
 
 

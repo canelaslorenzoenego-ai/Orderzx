@@ -8,6 +8,17 @@ mouse at any moment. When a site throws a CAPTCHA that automation shouldn't
 solve, the agent pauses and hands the widget to **you** — in-session, with your
 own fingerprint and IP, which is the one solve method that always works.
 
+![The boot sequence: capsule pops on the chatbar, the dashboard extends, the live stream paints, and the agent's gestures animate over the frames](docs/assets/boot-sequence.svg)
+
+*The whole flow, animated: capsule pop → dashboard extend → boot phases → live
+stream → ghost-cursor gestures → a CAPTCHA handoff. Timings are the real ones
+from the shipped code (320 ms pop, 420 ms `AUTO_OPEN_DELAY_MS`, 180 ms slide-in).*
+
+The boot sequence is one continuous motion: the **capsule pops** on the chatbar
+→ the **dashboard extends** → boot phases play inside the panel → the **live
+stream** paints → gesture animations (cursor path, click ripples, focus rings,
+scroll arrows, swipe trails, typing counters) run over the frames in real time.
+
 ```
 you:  "book me a table at X"
         ┌──────────── chatbar ────────────┐
@@ -25,11 +36,6 @@ you:  "book me a table at X"
         │  [ Take over ]   1366×768 · humanized      │  ← your mouse, on request
         └────────────────────────────────────────────┘
 ```
-
-The boot sequence is one continuous motion: the **capsule pops** on the chatbar
-→ the **dashboard extends** → boot phases play inside the panel → the **live
-stream** paints → gesture animations (cursor path, click ripples, focus rings,
-scroll arrows, swipe trails, typing counters) run over the frames in real time.
 
 ---
 
@@ -118,6 +124,12 @@ Two supported setups, no LAN exposure either way:
    file (`pnpm run build:standalone` → `lib/standalone.html`) that mounts the
    exact same panel components.
 
+![The narrow phone layout: full-screen panel with touch-sized tabs, a desktop-view site streaming inside, tap ripple and focus outline from the agent, and the turnstile handoff banner waiting for a human](docs/assets/panel-phone-narrow.png)
+
+*Narrow layout with desktop view ON: the phone shows a 1366×768 desktop site
+while the agent works it — and when a CAPTCHA appears, the amber handoff
+banner pauses everything until you tap **solved**.*
+
 ## The boot sequence
 
 1. **Capsule** — a small CRT-monitor animation appears above the composer
@@ -157,6 +169,11 @@ Two supported setups, no LAN exposure either way:
    typed `pointer-owned` refusals — no fighting over one cursor); *Resume*
    hands it back. A CAPTCHA flips this around: the agent pauses and the panel
    asks **you** to solve it.
+
+![The docked dashboard on desktop: one custom tab per sub-agent browser, the action timeline, the live page with the agent's click ripple mid-action, and Take over in the footer](docs/assets/panel-desktop-dark.png)
+
+*Illustrative render of the docked layout — every component in it is real
+shipped code; run `node demo/server.mjs` to drive the actual ones.*
 
 If the dashboard does not extend, it is one of three things, in order of
 likelihood:

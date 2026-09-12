@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img" aria-label="Animated boot sequence: the capsule pops on the chatbar, the dashboard extends, boot phases play, the live stream paints with the agent's gestures, then a CAPTCHA hands off to the user">
+  <style><![CDATA[
+    :root { }
+    text { font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; fill: rgba(255,255,255,.92); }
+    .dim { fill: rgba(255,255,255,.55); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .line { stroke: rgba(128,128,128,.28); stroke-width: 1; fill: none; }
+
+    /* ── master timeline: 12s loop ─────────────────────────────── */
+    /* capsule: 0→2.7% pop (320ms), stays until panel opens        */
+    .capsule { transform-origin: 320px 470px; animation: pop 12s infinite; }
+    @keyframes pop {
+      0%      { transform: scale(0); opacity: 0; }
+      1.2%    { transform: scale(1.18); opacity: 1; }
+      2.7%    { transform: scale(1); opacity: 1; }
+      7%      { transform: scale(1); opacity: 1; }
+      10%,100%{ transform: scale(1); opacity: 0; }
+    }
+    /* panel: 3.5%→8% slide in (420ms delay + 180ms slide)         */
+    .panel { animation: slide 12s infinite; }
+    @keyframes slide {
+      0%,3.5% { transform: translateX(400px); }
+      8%      { transform: translateX(0); }
+      96%     { transform: translateX(0); }
+      98%,100%{ transform: translateX(400px); }
+    }
+    /* boot chips light in sequence 8→22%                          */
+    .chip1 { animation: chip 12s infinite; }
+    .chip2 { animation: chip 12s infinite; animation-delay: 0s; }
+    @keyframes chip { 0%,100% { opacity: .22; } }
+    .c1 { animation: on1 12s infinite; } @keyframes on1 { 0%,8%   {opacity:.22} 11%,96% {opacity:1} 100%{opacity:.22} }
+    .c2 { animation: on2 12s infinite; } @keyframes on2 { 0%,12%  {opacity:.22} 15%,96% {opacity:1} 100%{opacity:.22} }
+    .c3 { animation: on3 12s infinite; } @keyframes on3 { 0%,16%  {opacity:.22} 19%,96% {opacity:1} 100%{opacity:.22} }
+    .c4 { animation: on4 12s infinite; } @keyframes on4 { 0%,20%  {opacity:.22} 23%,96% {opacity:1} 100%{opacity:.22} }
+    /* stream viewport fades in at 24%                             */
+    .stream { animation: fadein 12s infinite; }
+    @keyframes fadein { 0%,24% { opacity: 0; } 28%,96% { opacity: 1; } 100% { opacity: 0; } }
+    /* ghost cursor: bezier-ish waypoints                          */
+    .cursor { animation: glide 12s infinite; }
+    @keyframes glide {
+      0%,28%   { transform: translate(690px,430px); opacity: 0; }
+      30%      { opacity: 1; }
+      36%      { transform: translate(760px,330px); }
+      42%      { transform: translate(826px,268px); }
+      48%      { transform: translate(826px,268px); }
+      56%      { transform: translate(742px,196px); }
+      70%      { transform: translate(742px,196px); }
+      78%      { transform: translate(860px,360px); }
+      90%,100% { transform: translate(860px,360px); opacity: 1; }
+    }
+    /* click ripple at the button, 42→52%                          */
+    .ripple { transform-origin: 826px 268px; animation: rip 12s infinite; }
+    @keyframes rip {
+      0%,42% { transform: scale(.2); opacity: 0; }
+      44%    { transform: scale(.6); opacity: .85; }
+      52%    { transform: scale(2.4); opacity: 0; }
+      100%   { transform: scale(2.4); opacity: 0; }
+    }
+    /* typing badge 56→70% with pulsing dots                       */
+    .typing { animation: fadein2 12s infinite; }
+    @keyframes fadein2 { 0%,56% { opacity: 0; } 59%,69% { opacity: 1; } 72%,100% { opacity: 0; } }
+    .dot { animation: blink 1s infinite; } .dot2 { animation-delay: .2s; } .dot3 { animation-delay: .4s; }
+    @keyframes blink { 0%,100% { opacity:.25 } 50% { opacity:1 } }
+    /* scroll chevrons 70→78%                                      */
+    .scrollc { animation: chev 12s infinite; }
+    @keyframes chev {
+      0%,70% { opacity: 0; transform: translateY(-6px); }
+      72%    { opacity: 1; transform: translateY(0); }
+      76%    { opacity: 1; transform: translateY(8px); }
+      78%,100% { opacity: 0; transform: translateY(10px); }
+    }
+    /* swipe trail draw 78→86%                                     */
+    .swipe { stroke-dasharray: 150; animation: draw 12s infinite; }
+    @keyframes draw { 0%,78% { stroke-dashoffset: 150; opacity: 0; } 80% { opacity: 1; } 86%,94% { stroke-dashoffset: 0; opacity: 1; } 97%,100% { stroke-dashoffset: 0; opacity: 0; } }
+    /* handoff banner 86→96%                                       */
+    .handoff { animation: up 12s infinite; }
+    @keyframes up { 0%,86% { transform: translateY(46px); opacity: 0; } 89%,95% { transform: translateY(0); opacity: 1; } 98%,100% { transform: translateY(0); opacity: 0; } }
+    /* stage captions                                              */
+    .cap { opacity: 0; }
+    .cap1 { animation: k1 12s infinite; } @keyframes k1 { 0%,1% {opacity:0} 3%,7% {opacity:1} 9%,100% {opacity:0} }
+    .cap2 { animation: k2 12s infinite; } @keyframes k2 { 0%,4% {opacity:0} 6%,10% {opacity:1} 12%,100% {opacity:0} }
+    .cap3 { animation: k3 12s infinite; } @keyframes k3 { 0%,9% {opacity:0} 11%,22% {opacity:1} 24%,100% {opacity:0} }
+    .cap4 { animation: k4 12s infinite; } @keyframes k4 { 0%,25% {opacity:0} 27%,84% {opacity:1} 86%,100% {opacity:0} }
+    .cap5 { animation: k5 12s infinite; } @keyframes k5 { 0%,86% {opacity:0} 88%,96% {opacity:1} 98%,100% {opacity:0} }
+    @media (prefers-reduced-motion: reduce) {
+      .capsule,.panel,.stream,.cursor { animation: none; opacity: 1; transform: none; }
+      .ripple,.typing,.scrollc,.swipe,.handoff,.cap { animation: none; opacity: .9; }
+    }
+  ]]></style>
+
+  <rect width="1000" height="560" fill="#0b0b0f"/>
+
+  <!-- ── chat side ── -->
+  <g>
+    <rect x="430" y="70" rx="12" width="330" height="52" fill="#1d1d23"/>
+    <text x="448" y="101" font-size="14">book me a table at X, friday 8pm</text>
+    <rect x="60" y="150" rx="12" width="380" height="66" fill="#16161a" stroke="rgba(128,128,128,.22)"/>
+    <text x="78" y="177" font-size="13.5">On it — starting a browser. I'll find</text>
+    <text x="78" y="198" font-size="135" fill="none"></text>
+    <text x="78" y="199" font-size="13.5">the restaurant and check friday 8pm.</text>
+    <!-- chatbar -->
+    <rect x="40" y="498" rx="12" width="540" height="44" fill="#16161a" stroke="rgba(128,128,128,.25)"/>
+    <text x="62" y="525" font-size="13" class="dim">Message the agent…</text>
+    <!-- capsule (pops above the chatbar) -->
+    <g class="capsule">
+      <rect x="252" y="452" rx="10" width="136" height="34" fill="#101014" stroke="#22d3ee" stroke-opacity=".65"/>
+      <g transform="translate(262,459)">
+        <rect x="0" y="0" width="16" height="12" rx="2" fill="none" stroke="#22d3ee" stroke-width="1.6"/>
+        <rect x="5" y="13" width="6" height="2" fill="#22d3ee"/>
+        <rect x="2" y="2.5" width="12" height="2" fill="#22d3ee" opacity=".5"/>
+      </g>
+      <text x="286" y="474" font-size="12" fill="#22d3ee">starting browser…</text>
+    </g>
+    <text x="40" y="46" font-size="15" font-weight="600">DeepSeek Harness — conversation</text>
+  </g>
+
+  <!-- ── dashboard panel ── -->
+  <g class="panel">
+    <rect x="600" y="0" width="400" height="560" fill="#16161a"/>
+    <line x1="600" y1="0" x2="600" y2="560" stroke="rgba(128,128,128,.35)"/>
+    <!-- tabs -->
+    <g font-size="12">
+      <rect x="612" y="10" rx="8" width="64" height="26" fill="#1d1d23"/>
+      <text x="626" y="27" class="dim">Home</text>
+      <rect x="684" y="10" rx="8" width="86" height="26" fill="#26262e" stroke="rgba(128,128,128,.3)"/>
+      <circle cx="698" cy="23" r="3" fill="#3fb950"/>
+      <text x="706" y="27">shopper</text>
+      <rect x="778" y="10" rx="8" width="92" height="26" fill="#1d1d23"/>
+      <text x="790" y="27" class="dim">researcher</text>
+    </g>
+    <!-- header -->
+    <text x="616" y="60" font-size="14" font-weight="600">Live browser · shopper</text>
+    <text x="616" y="76" font-size="10.5" class="mono dim">streaming · 1366×768 · screenshot 5fps</text>
+    <!-- boot chips -->
+    <g font-size="10.5" class="mono">
+      <rect class="c1" x="616" y="86" rx="6" width="70" height="18" fill="#1d1d23" stroke="rgba(63,185,80,.5)"/>
+      <text class="c1" x="626" y="99" fill="#3fb950">launching</text>
+      <rect class="c2" x="692" y="86" rx="6" width="64" height="18" fill="#1d1d23" stroke="rgba(63,185,80,.5)"/>
+      <text class="c2" x="700" y="99" fill="#3fb950">warming</text>
+      <rect class="c3" x="762" y="86" rx="6" width="76" height="18" fill="#1d1d23" stroke="rgba(63,185,80,.5)"/>
+      <text class="c3" x="770" y="99" fill="#3fb950">hardening</text>
+      <rect class="c4" x="844" y="86" rx="6" width="76" height="18" fill="#1d1d23" stroke="rgba(34,211,238,.5)"/>
+      <text class="c4" x="852" y="99" fill="#22d3ee">connecting</text>
+    </g>
+    <!-- stream viewport -->
+    <g class="stream">
+      <rect x="612" y="112" rx="10" width="376" height="352" fill="#0b0b0f" stroke="rgba(128,128,128,.28)"/>
+      <!-- mock page inside -->
+      <rect x="612" y="112" rx="10" width="376" height="30" fill="#111116"/>
+      <text x="628" y="131" font-size="10.5" class="mono dim">◀ ▶ ⟳  restaurant.example</text>
+      <rect x="632" y="160" rx="6" width="150" height="14" fill="#26262e"/>
+      <rect x="632" y="184" rx="6" width="220" height="9" fill="#1d1d23"/>
+      <rect x="632" y="200" rx="6" width="190" height="9" fill="#1d1d23"/>
+      <rect x="632" y="240" rx="8" width="120" height="34" fill="#1d1d23" stroke="rgba(34,211,238,.55)"/>
+      <text x="652" y="262" font-size="12" fill="#22d3ee">Reserve 8:00</text>
+      <rect x="632" y="296" rx="6" width="336" height="60" fill="#141419"/>
+      <rect x="632" y="366" rx="6" width="336" height="60" fill="#141419"/>
+      <!-- typing badge -->
+      <g class="typing">
+        <rect x="700" y="176" rx="9" width="86" height="24" fill="#101014" stroke="rgba(128,128,128,.4)"/>
+        <text x="712" y="192" font-size="10.5" class="mono dim">typing</text>
+        <circle class="dot"  cx="756" cy="188" r="2.4" fill="#22d3ee"/>
+        <circle class="dot dot2" cx="764" cy="188" r="2.4" fill="#22d3ee"/>
+        <circle class="dot dot3" cx="772" cy="188" r="2.4" fill="#22d3ee"/>
+      </g>
+      <!-- scroll chevrons -->
+      <g class="scrollc" stroke="#22d3ee" stroke-width="2" fill="none">
+        <path d="M950 300 l8 8 l8 -8"/>
+        <path d="M950 314 l8 8 l8 -8"/>
+      </g>
+      <!-- swipe trail -->
+      <path class="swipe" d="M905 400 C 870 392, 800 380, 745 372" stroke="#a371f7" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <!-- click ripple -->
+      <circle class="ripple" cx="826" cy="268" r="14" fill="none" stroke="#22d3ee" stroke-width="2"/>
+    </g>
+    <!-- ghost cursor -->
+    <g class="cursor">
+      <path d="M0 0 L11 4 L6.5 6.5 L4 11 Z" fill="#fff" stroke="#000" stroke-width=".8"/>
+      <circle cx="0" cy="0" r="7" fill="none" stroke="rgba(255,255,255,.5)"/>
+    </g>
+    <!-- handoff banner -->
+    <g class="handoff">
+      <rect x="600" y="514" width="400" height="46" fill="rgba(210,153,34,.14)"/>
+      <line x1="600" y1="514" x2="1000" y2="514" stroke="rgba(210,153,34,.5)"/>
+      <text x="616" y="541" font-size="11.5" fill="#d29922">turnstile needs a human — the agent is paused</text>
+      <rect x="930" y="526" rx="8" width="52" height="22" fill="none" stroke="rgba(63,185,80,.7)"/>
+      <text x="942" y="541" font-size="11" fill="#3fb950">solved</text>
+    </g>
+    <!-- footer -->
+    <rect x="612" y="474" rx="9" width="86" height="28" fill="none" stroke="rgba(128,128,128,.5)"/>
+    <text x="626" y="492" font-size="12">Take over</text>
+    <text x="712" y="492" font-size="10.5" class="dim">agent owns the pointer</text>
+  </g>
+
+  <!-- ── stage captions ── -->
+  <g font-size="13">
+    <text class="cap cap1" x="40" y="430" fill="#22d3ee">① capsule pops on the chatbar (320 ms)</text>
+    <text class="cap cap2" x="40" y="430" fill="#22d3ee">② +420 ms — the dashboard extends (180 ms)</text>
+    <text class="cap cap3" x="40" y="430" fill="#22d3ee">③ boot phases play inside the panel</text>
+    <text class="cap cap4" x="40" y="430" fill="#22d3ee">④ live stream — watch the agent click, type, scroll, swipe</text>
+    <text class="cap cap5" x="40" y="430" fill="#d29922">⑤ CAPTCHA? the agent pauses and hands it to you</text>
+  </g>
+</svg>

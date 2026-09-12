@@ -1,5 +1,7 @@
 # Orderzx
 
+![Orderzx — our custom Chrome: live frames, ghost cursor, stealth shield, one wordmark](docs/assets/banner.svg)
+
 **A live, stealth-capable, autonomous Chrome inside your DeepSeek Harness conversation** — the `dsh-browser` plugin.
 
 [![ci](https://img.shields.io/github/actions/workflow/status/canelaslorenzoenego-ai/Orderzx/ci.yml?branch=main&style=flat-square&label=build)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions)

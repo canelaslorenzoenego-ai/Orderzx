@@ -31,6 +31,7 @@ const { resolveConfig } = await import(pathToFileURL(join(root, 'lib', 'config.j
 const { TOOL_NAMES } = await import(pathToFileURL(join(root, 'lib', 'protocol.js')).href)
 const { readClipManifest } = await import(pathToFileURL(join(root, 'lib', 'capture-store.js')).href)
 const { captureDir } = await import(pathToFileURL(join(root, 'lib', 'access.js')).href)
+const { InteractionTrace, captionOfEvent } = await import(pathToFileURL(join(root, 'lib', 'interactions.js')).href)
 const { selectMarks, buildOverlayScript, CLEANUP_SCRIPT, MAX_MARKS, resolveMark, setMarks, clearMarks } = await import(pathToFileURL(join(root, 'lib', 'marks.js')).href)
 
 const SESSION = 'sess-0123456789abcdef'
@@ -109,6 +110,7 @@ function makeStubHost(options = {}) {
   const page = options.page ?? makeFakePage(options.pageOptions ?? {})
   const session = {
     id: SESSION,
+    interactions: new InteractionTrace(),
     owner: options.owner ?? 'agent',
     challenge: null,
     browser: {
@@ -927,5 +929,20 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   step('clip without a browser is refused like every other tool', refused?.ok === false && refused.refused === 'no-session', JSON.stringify(refused).slice(0, 120))
   const transcript = await run(tools, TOOL_NAMES.transcript, {})
   step('browser_transcript reads the open transcript panel', transcript?.ok === true && transcript.source === 'transcript-panel' && transcript.lines.join('|') === 'hello|world' && transcript.title === 'Fixture Video', JSON.stringify(transcript).slice(0, 160))
+}
+
+// ── C10: the gesture track rides inside the clip ────────────────────────────
+{
+  const { host, tools } = build()
+  // gestures must land INSIDE the sampling window — that is the whole point
+  const clipPromise = run(tools, TOOL_NAMES.clip, { seconds: 2, fps: 2 })
+  host.session(SESSION).interactions.publish('agent', { type: 'click', x: 0.42, y: 0.61, button: 'left', label: 'Sign in' })
+  host.session(SESSION).interactions.publish('agent', { type: 'scroll', deltaX: 0, deltaY: 480 })
+  const clip = await clipPromise
+  const manifestPath = join(captureDir(), SESSION, 'clips', `${clip.clipId}.json`)
+  const onDisk = await readClipManifest(manifestPath)
+  step('the clip manifest carries the gestures recorded inside its window', clip?.ok === true && Array.isArray(onDisk?.events) && onDisk.events.some(e => e.type === 'click' && e.x === 0.42 && e.text.includes('Sign in')) && onDisk.events.some(e => e.type === 'scroll' && e.text === 'scroll down 480px'), JSON.stringify(onDisk?.events))
+  step('clip frames carry timestamps so replays can sync the hand', Array.isArray(onDisk?.frames) && onDisk.frames.every(f => typeof f.t === 'number' && f.t > 0), '')
+  step('captions read like a human narrating, never echoing typed text', captionOfEvent({ type: 'type', characters: 12, secret: true }) === 'type 12 chars (secret)' && captionOfEvent({ type: 'key', key: 'Enter' }) === 'press Enter', '')
 }
 finish()

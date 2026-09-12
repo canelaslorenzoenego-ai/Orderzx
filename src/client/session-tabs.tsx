@@ -340,7 +340,12 @@ const toolIconStyles: CSSProperties = {
  * the fetch lives in an effect, so Node never touches the network.
  */
 function ClipPlayer(props: { clip: ClipRef }): ReactNode {
-  const [manifest, setManifest] = useState<{ fps?: number; frames?: { url?: string }[] } | null>(null)
+  const [manifest, setManifest] = useState<{
+    at?: number
+    fps?: number
+    frames?: { url?: string; t?: number }[]
+    events?: { t: number; type: string; actor: string; x?: number; y?: number; text: string }[]
+  } | null>(null)
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(true)
   useEffect(() => {
@@ -355,22 +360,48 @@ function ClipPlayer(props: { clip: ClipRef }): ReactNode {
       .catch(() => undefined)
     return () => { dead = true }
   }, [props.clip.manifest])
-  const frames = (manifest?.frames ?? []).filter((frame): frame is { url: string } => typeof frame?.url === 'string')
+  const frames = (manifest?.frames ?? []).filter((frame): frame is { url: string; t?: number } => typeof frame?.url === 'string')
   useEffect(() => {
     if (!playing || frames.length === 0) return
     const fps = Math.min(12, Math.max(1, Math.round(manifest?.fps ?? props.clip.fps ?? 3)))
     const timer = setInterval(() => setIndex(i => (i + 1) % frames.length), Math.round(1000 / fps))
     return () => clearInterval(timer)
   }, [playing, frames.length, manifest?.fps, props.clip.fps])
-  const current = frames[Math.min(index, Math.max(0, frames.length - 1))]
+  const position = Math.min(index, Math.max(0, frames.length - 1))
+  const current = frames[position]
+  // The gesture track: marks whose timestamp falls inside this frame's window
+  // draw the model's hand back on top of the raw captures.
+  const events = manifest?.events ?? []
+  const frameAt = (i: number): number => frames[i]?.t ?? (manifest?.at ?? 0) + Math.round((i * 1000) / Math.max(1, props.clip.fps))
+  const windowEnd = position + 1 < frames.length ? frameAt(position + 1) : frameAt(position) + Math.round(1000 / Math.max(1, props.clip.fps))
+  const marks = events.filter(e => typeof e.x === 'number' && typeof e.y === 'number' && e.t >= frameAt(position) && e.t < windowEnd)
+  const caption = [...events].reverse().find(e => e.t <= frameAt(position))?.text
   return (
     <div style={clipPlayerStyles} data-clip-id={props.clip.id}>
-      {current ? (
-        <img src={current.url} alt={`clip frame ${Math.min(index, frames.length - 1) + 1} of ${frames.length}`} style={clipFrameStyles} />
-      ) : (
-        <div style={clipLoadingStyles}>loading clip…</div>
-      )}
+      <div style={clipStageStyles}>
+        {current ? (
+          <img src={current.url} alt={`clip frame ${position + 1} of ${frames.length}`} style={clipFrameStyles} />
+        ) : (
+          <div style={clipLoadingStyles}>loading clip…</div>
+        )}
+        {marks.map((mark, i) => (
+          <span
+            key={`${mark.t}-${i}`}
+            style={{ ...clipMarkStyles, left: `${(mark.x ?? 0) * 100}%`, top: `${(mark.y ?? 0) * 100}%` }}
+            data-gesture-mark={mark.type}
+            aria-hidden="true"
+          >
+            {mark.type === 'click' || mark.type === 'down' ? (
+              <span style={clipRippleStyles(mark.actor)} />
+            ) : null}
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ display: 'block' }}>
+              <path d="M2 1.5 11 7.2 6.6 8.1 8.8 12.4 6.8 13.3 4.7 9 2 11.6Z" fill={mark.actor === 'user' ? '#f0883e' : '#58a6ff'} stroke="#010409" strokeWidth="0.8" />
+            </svg>
+          </span>
+        ))}
+      </div>
       <div style={clipBarStyles}>
+        <span style={clipCaptionStyles} data-gesture-caption>{caption ?? '…'}</span>
         <button type="button" style={clipButtonStyles} onClick={() => setPlaying(value => !value)} aria-label={playing ? 'pause clip' : 'play clip'}>
           {playing ? '❚❚' : '▶'}
         </button>
@@ -389,7 +420,18 @@ const clipPlayerStyles: CSSProperties = {
   overflow: 'hidden',
   background: 'rgba(1,4,9,0.72)',
 }
+const clipStageStyles: CSSProperties = { position: 'relative', overflow: 'hidden' }
 const clipFrameStyles: CSSProperties = { display: 'block', width: '100%', maxHeight: 220, objectFit: 'contain', background: '#010409' }
+const clipMarkStyles: CSSProperties = { position: 'absolute', transform: 'translate(-2px,-2px)', pointerEvents: 'none', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))' }
+const clipRippleStyles = (actor: string): CSSProperties => ({
+  position: 'absolute', left: 0, top: 0, width: 26, height: 26, borderRadius: '50%',
+  border: `2px solid ${actor === 'user' ? '#f0883e' : '#67e8f9'}`,
+  transform: 'translate(-50%,-50%)',
+  animation: 'dsh-browser-markpop 700ms ease-out forwards',
+})
+const clipCaptionStyles: CSSProperties = {
+  flex: '1 1 auto', fontSize: 10, color: '#a5d6ff', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+}
 const clipLoadingStyles: CSSProperties = { padding: '14px 12px', fontSize: 11, color: '#8b949e' }
 const clipBarStyles: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderTop: '1px solid rgba(103,232,249,0.18)' }
 const clipButtonStyles: CSSProperties = {

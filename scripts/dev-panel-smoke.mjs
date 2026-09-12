@@ -574,6 +574,8 @@ const el = React.createElement
   const clipEntry = { ts: stamp, tool: 'browser_clip', summary: 'clip 4s @ 3fps — 12 frames', ok: true, clip: { id: 'clip-x1', manifest: '/_dsh/dsh-browser/capture?token=tok', seconds: 4, fps: 3, frames: 12 } }
   const clipHtml = renderToString(el(TimelineDrawer, { entries: [clipEntry], open: true, onToggle: () => {} }))
   step('clip rows carry the film glyph and an inline player shell', clipHtml.includes('data-toolicon="clip"') && clipHtml.includes('data-clip-id="clip-x1"') && clipHtml.includes('loading clip'), '')
+  step('the player shell carries a gesture-caption slot', clipHtml.includes('data-gesture-caption'), '')
+  step('gesture captions narrate without leaking content', client.captionOfEvent({ type: 'scroll', deltaX: 0, deltaY: 320 }) === 'scroll down 320px' && client.captionOfEvent({ type: 'click', x: 0.1, y: 0.2, button: 'left', ref: 'e12', label: 'Sign in' }) === 'click “Sign in”' && client.captionOfEvent({ type: 'type', characters: 8, secret: false }) === 'type 8 chars', '')
 
 
     // debug drawer (console + network tap)

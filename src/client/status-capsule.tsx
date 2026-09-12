@@ -87,6 +87,8 @@ export const CAPSULE_KEYFRAMES = `
   0%   { stroke-dashoffset: 32; }
   100% { stroke-dashoffset: 0; }
 }
+@keyframes dsh-browser-chip { 0% { opacity: 0; transform: translateY(4px); } 12% { opacity: 1; transform: none; } 78% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes dsh-browser-markpop { from { transform: translate(-50%,-50%) scale(0.4); opacity: 0.95; } to { transform: translate(-50%,-50%) scale(1.7); opacity: 0; } }
 `
 
 let styleInstalled = false

@@ -46,7 +46,9 @@ export interface ClipManifest {
   seconds: number
   title: string
   url: string
-  frames: { path: string; bytes: number; url?: string }[]
+  frames: { path: string; bytes: number; url?: string; t?: number }[]
+  /** The gesture track over the clip window — replays draw the model's hand. */
+  events?: { t: number; type: string; actor: string; x?: number; y?: number; text: string }[]
 }
 
 /**

@@ -196,6 +196,35 @@ export function normalizeEvent(event: InteractionEvent, viewport?: { width: numb
  * dropped, exactly like the frame subscribers — one broken connection must not
  * blind the others.
  */
+/**
+ * One gesture, said the way a human watching over your shoulder would say it.
+ * Never includes typed text or full URLs — counts and origins only, matching
+ * the trace's own privacy rules.
+ */
+export function captionOfEvent(event: InteractionEvent): string {
+  switch (event.type) {
+    case 'click': return `click${event.label ? ` “${event.label}”` : event.ref ? ` ${event.ref}` : ''}`.trim()
+    case 'down': return 'press down'
+    case 'up': return 'release'
+    case 'move': return 'move pointer'
+    case 'scroll': case 'swipe': {
+      const e = event as { deltaY?: number; deltaX?: number }
+      const dy = e.deltaY ?? 0
+      const dx = e.deltaX ?? 0
+      if (Math.abs(dy) >= Math.abs(dx)) return `scroll ${dy > 0 ? 'down' : dy < 0 ? 'up' : ''} ${Math.abs(dy)}px`.replace('  ', ' ')
+      return `scroll ${dx > 0 ? 'right' : 'left'} ${Math.abs(dx)}px`
+    }
+    case 'type': return `type ${event.characters} char${event.characters === 1 ? '' : 's'}${event.secret ? ' (secret)' : ''}`
+    case 'key': return `press ${event.key}`
+    case 'navigate': return `navigate ${event.action ?? 'goto'}`
+    case 'focus': return `focus${event.label ? ` “${event.label}”` : ''}`
+    case 'challenge': return `challenge: ${event.state}`
+    case 'phase': return event.detail ?? 'phase'
+    case 'note': return event.text
+    default: return 'gesture'
+  }
+}
+
 export class InteractionTrace {
   #records: InteractionRecord[] = []
   #seq = 0

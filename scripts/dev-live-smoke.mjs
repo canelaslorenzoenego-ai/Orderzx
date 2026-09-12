@@ -306,6 +306,12 @@ try {
   await new Promise(resolve => setTimeout(resolve, 2600))
   const calm = host.status(sessionId)?.frames
   step('boost relaxes once playback is gone', away?.ok === true && calm?.boost === false, JSON.stringify(calm))
+  // C10: a click that lands INSIDE the clip window must ride in its manifest
+  const gestureClipPromise = runTool('browser_clip', { session: sessionId, seconds: 3, fps: 2 })
+  await new Promise(resolve => setTimeout(resolve, 800))
+  await runTool('browser_click', { session: sessionId, x: 0.5, y: 0.35 })
+  const gestureClip = await gestureClipPromise
+  step('the clip carries the gesture track for actions inside its window', gestureClip?.ok === true && Array.isArray(gestureClip.events) && gestureClip.events.some(e => e.type === 'click' && typeof e.x === 'number' && /click/.test(e.text)) && gestureClip.frames.every?.(f => typeof f.t === 'number') !== false, JSON.stringify(gestureClip?.events))
   clipUnmount()
   clipWeb.server.close()
 

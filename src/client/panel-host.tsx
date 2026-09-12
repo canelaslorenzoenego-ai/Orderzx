@@ -675,6 +675,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
               highlight={null}
               challengeBox={null}
               overlay={session.overlay}
+              gesture={session.gesture}
               onControl={onControl}
               onFrameLoad={session.onLoad}
               onFirstFrame={onFirstFrame}

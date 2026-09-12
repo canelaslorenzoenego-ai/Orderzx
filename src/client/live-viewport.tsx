@@ -45,6 +45,7 @@ import {
   type FetchLike,
 } from './wire.js'
 import { applyInteraction, pruneOverlay, resetOverlay, type OverlayState } from './interaction-overlay.js'
+import { captionOfEvent } from '../interactions.js'
 import { InteractionOverlay } from './interaction-overlay.js'
 
 // ── stream session ──────────────────────────────────────────────────────────
@@ -91,6 +92,8 @@ export interface StreamSession {
    * old cursor position over a new page is a lie.
    */
   overlay: OverlayState
+  /** The newest gesture, captioned — the live 'what is it doing' chip. */
+  gesture: { seq: number; actor: string; text: string } | null
 }
 
 export interface StreamSessionOptions {
@@ -127,6 +130,7 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
   const [error, setError] = useState<string | null>(null)
   const [generation, setGeneration] = useState(0)
   const [heartbeat, setHeartbeat] = useState(0)
+  const [gesture, setGesture] = useState<{ seq: number; actor: string; text: string } | null>(null)
   const [overlay, setOverlay] = useState<OverlayState>(() => resetOverlay())
   const lastLoadAt = useRef<number>(0)
 
@@ -248,7 +252,10 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
     const subscription = subscribeInteractions({
       token: token.stream,
       since: 0,
-      onEvent: record => setOverlay(current => applyInteraction(current, record)),
+      onEvent: record => {
+        setOverlay(current => applyInteraction(current, record))
+        setGesture({ seq: record.seq, actor: record.actor, text: captionOfEvent(record.event) })
+      },
       onResync: () => setOverlay(current => ({ ...resetOverlay(), cursor: current.cursor })),
     })
     const timer = setInterval(() => {
@@ -285,6 +292,7 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
     controlToken: token?.control,
     refresh: () => setGeneration(value => value + 1),
     requestDrive,
+    gesture,
     overlay,
   }
 }
@@ -327,6 +335,7 @@ export interface LiveViewportProps {
   challengeBox?: { x: number; y: number; w: number; h: number } | null
   /** Agent gesture state from `useStreamSession().overlay`. */
   overlay?: OverlayState
+  gesture?: { seq: number; actor: string; text: string } | null
   onControl(message: ControlMessage): void
   onFrameLoad(): void
   onFirstFrame?(): void
@@ -502,6 +511,11 @@ export function LiveViewport(props: LiveViewportProps): ReactNode {
       {/* Overlay: never interactive, or it would eat clicks meant for the page. */}
       <div style={overlayStyles}>
         {props.overlay ? <InteractionOverlay state={props.overlay} hideAgentPointer={canDrive} /> : null}
+        {props.gesture ? (
+          <span key={props.gesture.seq} style={gestureChipStyles} data-gesture-chip={props.gesture.actor}>
+            {props.gesture.actor === 'user' ? 'you · ' : ''}{props.gesture.text}
+          </span>
+        ) : null}
         {props.highlight ? <HighlightBox box={props.highlight} tone="action" /> : null}
         {props.challengeBox ? <HighlightBox box={props.challengeBox} tone="challenge" /> : null}
         {cursor && canDrive ? <span style={cursorDotStyles(cursor)} /> : null}
@@ -544,6 +558,16 @@ const imageStyles: CSSProperties = {
   display: 'block',
   userSelect: 'none',
   pointerEvents: 'none',
+}
+
+const gestureChipStyles: CSSProperties = {
+  position: 'absolute', left: 10, bottom: 10, zIndex: 5,
+  padding: '3px 9px', borderRadius: 999,
+  background: 'rgba(1,4,9,0.82)', border: '1px solid rgba(88,166,255,0.4)',
+  color: '#a5d6ff', fontSize: 11, lineHeight: '16px',
+  backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+  animation: 'dsh-browser-chip 2.6s ease forwards',
+  pointerEvents: 'none', whiteSpace: 'nowrap', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis',
 }
 
 const overlayStyles: CSSProperties = {

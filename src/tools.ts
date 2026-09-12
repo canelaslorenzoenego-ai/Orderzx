@@ -31,6 +31,7 @@ import { probeEngine } from './engine/index.js'
 import { CAPTURE_ROUTE_PREFIX, FRAME_SOURCES, TOOL_NAMES } from './protocol.js'
 import type { ClipRef, FrameSource } from './protocol.js'
 import { saveClipManifest } from './capture-store.js'
+import { captionOfEvent } from './interactions.js'
 import { redactConfig } from './config.js'
 import type { ChallengePipeline, Verdict } from './challenge/pipeline.js'
 import { sessionBoundWarning } from './challenge/pipeline.js'
@@ -1773,6 +1774,21 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           manifest: { type: 'string', description: 'Signed manifest URL — the replayable artifact.' },
           delivered: { type: 'array', items: { type: 'string' }, description: "Where the clip went: ['session', 'chat-line']." },
           chatLine: { type: 'string', description: 'INCLUDE VERBATIM IN YOUR REPLY when the user asked for the video.' },
+          events: {
+            type: 'array',
+            description: 'Gesture track inside the clip window (captioned; replays draw the hand).',
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                t: { type: 'number', required: true },
+                type: { type: 'string', required: true },
+                actor: { type: 'string', required: true },
+                x: { type: 'number' },
+                y: { type: 'number' },
+                text: { type: 'string', required: true },
+              },
+            },
+          },
           message: { type: 'string' },
         },
       },
@@ -1784,13 +1800,17 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       const seconds = Math.min(10, Math.max(1, Math.round(Number(args.seconds ?? 4))))
       const fps = Math.min(6, Math.max(1, Math.round(Number(args.fps ?? 3))))
       const total = Math.max(2, seconds * fps)
-      const frames: { path: string; bytes: number; url: string }[] = []
+      const frames: { path: string; bytes: number; url: string; t: number }[] = []
+      // Gesture track: everything the trace records between these two seqs
+      // happened inside the clip window, so the replay can draw the hand.
+      const trace = host.session(resolved.sessionId)?.interactions
+      const startSeq = trace ? trace.since(0).latest : 0
       for (let i = 0; i < total; i += 1) {
         if (exec.signal?.aborted) break
         const data = await resolved.page.capture({ format: 'jpeg', quality: host.config.frames.jpegQuality }).catch(() => undefined)
         if (data && data.byteLength > 0 && data.byteLength <= 4_000_000) {
           const saved = await host.saveCapture(resolved.sessionId, data, 'jpg').catch(() => undefined)
-          if (saved) frames.push({ path: saved.path, bytes: data.byteLength, url: `${CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(saved.token)}` })
+          if (saved) frames.push({ path: saved.path, bytes: data.byteLength, url: `${CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(saved.token)}`, t: Date.now() })
         }
         if (i < total - 1) await sleep(Math.round(1000 / fps), exec.signal).catch(() => undefined)
       }
@@ -1803,6 +1823,17 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       const title = typeof meta?.title === 'string' ? meta.title.slice(0, 120) : ''
       const pageUrl = typeof meta?.url === 'string' ? meta.url.slice(0, 200) : ''
       const clipId = `clip-${Date.now().toString(36)}-${frames.length}`
+      const window = trace ? trace.since(startSeq).records : []
+      const events = window.map(record => {
+        const event = record.event as Record<string, unknown>
+        return {
+          t: record.at,
+          type: record.event.type,
+          actor: record.actor,
+          ...(typeof event.x === 'number' && typeof event.y === 'number' ? { x: event.x, y: event.y } : {}),
+          text: captionOfEvent(record.event),
+        }
+      })
       const manifestPath = await saveClipManifest(resolved.sessionId, {
         id: clipId,
         sessionId: resolved.sessionId,
@@ -1812,6 +1843,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         title,
         url: pageUrl,
         frames,
+        events,
       })
       const grant = await host.signPath(manifestPath, { ttlMs: 60 * 60 * 1000 })
       const manifestUrl = `${CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(grant.token)}`
@@ -1829,6 +1861,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         manifest: manifestUrl,
         delivered: ['session', 'chat-line'],
         chatLine,
+        events,
       } as never
     },
   })

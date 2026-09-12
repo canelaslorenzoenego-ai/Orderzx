@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Orderzx custom Chrome icon">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#67e8f9"/><stop offset=".55" stop-color="#58a6ff"/><stop offset="1" stop-color="#bc8cff"/>
+    </linearGradient>
+    <linearGradient id="b" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#67e8f9"/><stop offset="1" stop-color="#3fb950"/>
+    </linearGradient>
+    <radialGradient id="core" cx=".5" cy=".45" r=".6">
+      <stop offset="0" stop-color="#0d1117"/><stop offset="1" stop-color="#010409"/>
+    </radialGradient>
+    <radialGradient id="halo" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#58a6ff" stop-opacity=".35"/><stop offset="1" stop-color="#58a6ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- plate -->
+  <rect width="512" height="512" rx="112" fill="#010409"/>
+  <rect x="6" y="6" width="500" height="500" rx="106" fill="none" stroke="url(#a)" stroke-opacity=".35" stroke-width="3"/>
+  <circle cx="256" cy="256" r="230" fill="url(#halo)"/>
+
+  <!-- the chrome orb: three neon segments, our DNA not Google's colours -->
+  <g fill="none" stroke-width="34" stroke-linecap="round" filter="url(#glow)">
+    <path d="M256 96a160 160 0 0 1 138.6 80" stroke="url(#a)"/>
+    <path d="M394.6 256a160 160 0 0 1-277.2 80" stroke="url(#b)"/>
+    <path d="M117.4 336a160 160 0 0 1 0-160" stroke="#bc8cff"/>
+  </g>
+
+  <!-- core: hex shield with the agent cursor -->
+  <circle cx="256" cy="256" r="96" fill="url(#core)" stroke="#67e8f9" stroke-opacity=".7" stroke-width="4"/>
+  <path d="M256 196l52 30v60l-52 30-52-30v-60Z" fill="none" stroke="#67e8f9" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M238 236l44 27-22 5 12 22-10 5-12-22-12 13Z" fill="#58a6ff" stroke="#010409" stroke-width="3"/>
+
+  <!-- the human handoff dot: you can always take over -->
+  <circle cx="392" cy="392" r="26" fill="#0d1117" stroke="#f0883e" stroke-width="6"/>
+  <path d="M384 398v-14a5 5 0 0 1 10 0v8l10 3c4 1 6 5 5 9l-2 7a8 8 0 0 1-8 6h-9a9 9 0 0 1-7-4l-6-8a4 4 0 0 1 6-5l1 2Z" fill="#f0883e"/>
+</svg>

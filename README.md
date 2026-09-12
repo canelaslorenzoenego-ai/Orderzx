@@ -1,3 +1,5 @@
+<img src="docs/assets/icon.svg" width="112" alt="Orderzx custom Chrome icon" align="right">
+
 # Orderzx
 
 ![Orderzx — our custom Chrome: live frames, ghost cursor, stealth shield, one wordmark](docs/assets/banner.svg)

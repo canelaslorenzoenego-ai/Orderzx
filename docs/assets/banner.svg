@@ -9,11 +9,20 @@
     <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#04101a"/><stop offset="1" stop-color="#0a0618"/>
     </linearGradient>
+    <linearGradient id="orb1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#67e8f9"/><stop offset="1" stop-color="#58a6ff"/>
+    </linearGradient>
+    <linearGradient id="orb2" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#67e8f9"/><stop offset="1" stop-color="#3fb950"/>
+    </linearGradient>
     <radialGradient id="glowC" cx=".5" cy=".5" r=".5">
-      <stop offset="0" stop-color="#67e8f9" stop-opacity=".28"/><stop offset="1" stop-color="#67e8f9" stop-opacity="0"/>
+      <stop offset="0" stop-color="#67e8f9" stop-opacity=".26"/><stop offset="1" stop-color="#67e8f9" stop-opacity="0"/>
     </radialGradient>
     <radialGradient id="glowP" cx=".5" cy=".5" r=".5">
-      <stop offset="0" stop-color="#bc8cff" stop-opacity=".22"/><stop offset="1" stop-color="#bc8cff" stop-opacity="0"/>
+      <stop offset="0" stop-color="#bc8cff" stop-opacity=".2"/><stop offset="1" stop-color="#bc8cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx=".5" cy=".45" r=".6">
+      <stop offset="0" stop-color="#0d1117"/><stop offset="1" stop-color="#010409"/>
     </radialGradient>
     <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
       <path d="M40 0H0V40" fill="none" stroke="#58a6ff" stroke-opacity=".07" stroke-width="1"/>
@@ -26,13 +35,16 @@
       @keyframes ekg { to { stroke-dashoffset: -160; } }
       @keyframes pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
       @keyframes drift { 0%,100% { transform: translate(0,0); } 50% { transform: translate(26px,-14px); } }
+      @keyframes sweep { 0% { transform: translateX(-500px); } 100% { transform: translateX(1700px); } }
       .rip { transform-origin: 468px 300px; animation: ripple 1.8s ease-out infinite; }
       .rip2 { transform-origin: 468px 300px; animation: ripple 1.8s ease-out infinite .9s; }
       .ekg { stroke-dasharray: 60 100; animation: ekg 2.4s linear infinite; }
       .pulse { animation: pulse 2.2s ease-in-out infinite; }
       .cursor { animation: drift 5s ease-in-out infinite; }
-      @media (prefers-reduced-motion: reduce) { .rip,.rip2,.ekg,.pulse,.cursor { animation: none; } }
-      text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .sweep { animation: sweep 7s linear infinite; }
+      @media (prefers-reduced-motion: reduce) { .rip,.rip2,.ekg,.pulse,.cursor,.sweep { animation: none; } }
+      text { font-family: "Inter", "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif; }
+      .mono { font-family: "SF Mono", "Cascadia Code", "JetBrains Mono", ui-monospace, monospace; }
     </style>
   </defs>
 
@@ -41,26 +53,35 @@
   <rect width="1600" height="520" fill="url(#grid)"/>
   <ellipse cx="380" cy="260" rx="520" ry="300" fill="url(#glowC)"/>
   <ellipse cx="1240" cy="240" rx="520" ry="300" fill="url(#glowP)"/>
+  <ellipse cx="800" cy="560" rx="900" ry="180" fill="url(#glowC)" opacity=".5"/>
+  <g class="sweep" opacity=".05"><polygon points="0,0 220,0 60,520 -160,520" fill="#67e8f9"/></g>
 
   <!-- ── our custom chrome: the window ─────────────────────────────────── -->
   <g filter="url(#soft)">
     <rect x="70" y="70" width="700" height="392" rx="18" fill="url(#win)" stroke="#67e8f9" stroke-opacity=".55" stroke-width="1.6"/>
   </g>
-  <!-- titlebar -->
   <path d="M70 88a18 18 0 0 1 18-18h664a18 18 0 0 1 18 18v26H70Z" fill="#0d1117"/>
   <circle cx="96" cy="92" r="5" fill="#f85149"/><circle cx="116" cy="92" r="5" fill="#d29922"/><circle cx="136" cy="92" r="5" fill="#3fb950"/>
-  <!-- active tab with the Orderzx glyph -->
-  <path d="M168 114v-16a8 8 0 0 1 8-8h150a8 8 0 0 1 8 8v16Z" fill="#161b22" stroke="#67e8f9" stroke-opacity=".5"/>
-  <path d="M186 96l7 4v6l-7 4-7-4v-6Z" fill="none" stroke="#67e8f9" stroke-width="1.6"/>
-  <path d="M186 99.5v3.5l3 1.8" fill="none" stroke="#67e8f9" stroke-width="1.2" stroke-linecap="round"/>
-  <text x="204" y="106" font-size="12" fill="#e6edf3">orderzx · agent</text>
-  <path d="M344 114v-16a8 8 0 0 1 8-8h96a8 8 0 0 1 8 8v16Z" fill="#0d1117" stroke="#30363d"/>
-  <text x="360" y="106" font-size="12" fill="#8b949e">researcher</text>
+  <!-- app-icon tile in the titlebar -->
+  <g transform="translate(156,80)">
+    <rect width="24" height="24" rx="6" fill="#010409" stroke="#67e8f9" stroke-opacity=".6"/>
+    <g fill="none" stroke-width="2.4" stroke-linecap="round" transform="translate(12,12)">
+      <path d="M0-8a8 8 0 0 1 6.9 4" stroke="url(#orb1)"/>
+      <path d="M6.9 4a8 8 0 0 1-13.8 0" stroke="url(#orb2)"/>
+      <path d="M-6.9-4a8 8 0 0 1 6.9-4" stroke="#bc8cff"/>
+    </g>
+    <path d="M10 9l6 3.6-3 .7 1.6 3-1.4.7-1.6-3-1.6 1.8Z" fill="#58a6ff"/>
+  </g>
+  <!-- tabs -->
+  <path d="M190 114v-16a8 8 0 0 1 8-8h140a8 8 0 0 1 8 8v16Z" fill="#161b22" stroke="#67e8f9" stroke-opacity=".5"/>
+  <text x="206" y="106" font-size="12" fill="#e6edf3">orderzx · agent</text>
+  <path d="M356 114v-16a8 8 0 0 1 8-8h96a8 8 0 0 1 8 8v16Z" fill="#0d1117" stroke="#30363d"/>
+  <text x="372" y="106" font-size="12" fill="#8b949e">researcher</text>
   <!-- addressbar -->
   <rect x="86" y="124" width="668" height="30" rx="15" fill="#010409" stroke="#30363d"/>
   <path d="M106 139v-4a5 5 0 0 1 10 0v4" fill="none" stroke="#3fb950" stroke-width="1.6"/><rect x="104" y="139" width="14" height="10" rx="2" fill="none" stroke="#3fb950" stroke-width="1.6"/>
-  <text x="128" y="144" font-size="13" fill="#8b949e">127.0.0.1 · local only · <tspan fill="#3fb950">humanized</tspan></text>
-  <text x="700" y="144" font-size="12" fill="#58a6ff" text-anchor="end">[ Take over ]</text>
+  <text x="128" y="144" font-size="13" fill="#8b949e" class="mono">127.0.0.1 · local only · <tspan fill="#3fb950">humanized</tspan></text>
+  <text x="744" y="144" font-size="12" fill="#58a6ff" text-anchor="end" class="mono">[ Take over ]</text>
   <!-- viewport -->
   <rect x="86" y="164" width="668" height="282" rx="10" fill="url(#screen)"/>
   <g stroke="#58a6ff" stroke-opacity=".5" stroke-width="2" stroke-linecap="round">
@@ -71,37 +92,77 @@
   </g>
   <rect x="118" y="292" width="150" height="42" rx="9" fill="none" stroke="#67e8f9" stroke-opacity=".8" stroke-width="1.6"/>
   <text x="193" y="318" font-size="14" fill="#67e8f9" text-anchor="middle">Sign in</text>
+  <!-- REC chip -->
+  <g><rect x="672" y="176" width="66" height="22" rx="11" fill="rgba(248,81,73,.14)" stroke="#f85149" stroke-opacity=".6"/>
+     <circle class="pulse" cx="686" cy="187" r="4" fill="#f85149"/>
+     <text x="696" y="191" font-size="11" fill="#f85149" class="mono">REC 4</text></g>
+  <!-- fps sparkline -->
+  <polyline points="640,432 652,432 658,424 664,438 670,432 690,432 696,426 702,436 708,432 736,432" fill="none" stroke="#3fb950" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="636" y="436" font-size="10" fill="#3fb950" text-anchor="end" class="mono">4.8fps</text>
   <!-- EKG frame stream -->
-  <polyline class="ekg" points="118,404 200,404 224,378 248,428 272,404 420,404 444,384 468,420 492,404 720,404" fill="none" stroke="#3fb950" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline class="ekg" points="118,404 200,404 224,378 248,428 272,404 420,404 444,384 468,420 492,404 600,404" fill="none" stroke="#3fb950" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- ghost cursor + ripples -->
   <circle class="rip" cx="468" cy="300" r="20" fill="none" stroke="#67e8f9" stroke-width="2.4"/>
   <circle class="rip2" cx="468" cy="300" r="20" fill="none" stroke="#67e8f9" stroke-width="1.6"/>
   <g class="cursor">
     <path d="M462 292l26 16-13 3 7 13-6 3-7-13-7 8Z" fill="#58a6ff" stroke="#010409" stroke-width="1.4"/>
   </g>
+  <!-- the human hand, waiting -->
+  <g transform="translate(560,330)" opacity=".95">
+    <path d="M8 20V6a3 3 0 0 1 6 0v9l7 2c3 .8 4.6 3.8 4 6.8l-1.4 6a6 6 0 0 1-5.9 4.7H11a7 7 0 0 1-5.6-2.8L1 19.6a2.6 2.6 0 0 1 4-3.2l3 3.6Z" fill="none" stroke="#f0883e" stroke-width="2" stroke-linejoin="round"/>
+    <rect x="30" y="8" width="42" height="18" rx="9" fill="rgba(240,136,62,.16)" stroke="#f0883e" stroke-opacity=".7"/>
+    <text x="51" y="21" font-size="11" fill="#f0883e" text-anchor="middle">you</text>
+  </g>
+  <!-- gesture caption chip -->
+  <g><rect x="100" y="416" width="196" height="24" rx="12" fill="rgba(1,4,9,.85)" stroke="#58a6ff" stroke-opacity=".5"/>
+     <text x="112" y="432" font-size="12" fill="#a5d6ff">agent · click “Sign in”</text></g>
   <!-- stealth shield badge -->
   <g transform="translate(700,392)">
     <path d="M0-34 30-22v20c0 20-13 33-30 40-17-7-30-20-30-40v-20Z" fill="#0d1117" stroke="#3fb950" stroke-width="2"/>
     <path class="pulse" d="M-12-2l8 9 16-18" fill="none" stroke="#3fb950" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <text x="700" y="452" font-size="12" fill="#3fb950" text-anchor="middle">stealth posture: honest</text>
+  <text x="688" y="452" font-size="12" fill="#3fb950" text-anchor="middle">stealth posture: honest</text>
 
-  <!-- ── wordmark ──────────────────────────────────────────────────────── -->
-  <text x="830" y="212" font-size="104" font-weight="800" letter-spacing="6" fill="url(#word)">ORDERZX</text>
-  <text x="834" y="252" font-size="21" fill="#e6edf3">A live, stealth-capable, autonomous Chrome</text>
-  <text x="834" y="280" font-size="21" fill="#8b949e">inside your DeepSeek Harness conversation.</text>
+  <!-- ── icon tile + custom logotype ───────────────────────────────────── -->
+  <g transform="translate(812,96)">
+    <rect width="128" height="128" rx="28" fill="#010409" stroke="url(#word)" stroke-opacity=".5" stroke-width="1.5"/>
+    <g transform="translate(64,64)">
+      <g fill="none" stroke-width="9" stroke-linecap="round">
+        <path d="M0-40a40 40 0 0 1 34.6 20" stroke="url(#orb1)"/>
+        <path d="M34.6 20a40 40 0 0 1-69.2 0" stroke="url(#orb2)"/>
+        <path d="M-34.6-20a40 40 0 0 1 34.6-20" stroke="#bc8cff"/>
+      </g>
+      <circle r="24" fill="url(#core)" stroke="#67e8f9" stroke-opacity=".7" stroke-width="1.5"/>
+      <path d="M0-15l13 7.5v15L0 15l-13-7.5v-15Z" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M-4.5-5l11 6.8-5.5 1.2 3 5.5-2.5 1.2-3-5.5-3 3.2Z" fill="#58a6ff"/>
+    </g>
+    <circle cx="96" cy="96" r="7" fill="#0d1117" stroke="#f0883e" stroke-width="2"/>
+    <path d="M93.6 98v-4a1.5 1.5 0 0 1 3 0v2.4l3 .9c1.2.4 1.8 1.6 1.5 2.8l-.6 2a2.4 2.4 0 0 1-2.4 1.8h-2.7a2.7 2.7 0 0 1-2.1-1.1l-1.8-2.4a1.2 1.2 0 0 1 1.8-1.5l.3.6Z" fill="#f0883e"/>
+  </g>
+  <!-- ORDERZX — hand-drawn monoline logotype, font-independent by design -->
+  <g transform="translate(972,116) scale(0.88)" fill="none" stroke="url(#word)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" filter="url(#soft)">
+    <rect x="0" y="0" width="88" height="104" rx="44"/>
+    <path d="M118 0v104M118 0h26a26 26 0 0 1 0 52h-26M144 52l30 52"/>
+    <path d="M212 0v104M212 0h16a52 52 0 0 1 0 104h-16"/>
+    <path d="M310 0v104M310 0h54M310 52h42M310 104h54"/>
+    <path d="M394 0v104M394 0h26a26 26 0 0 1 0 52h-26M420 52l30 52"/>
+    <path d="M488 0h62L488 104h62"/>
+    <path d="M580 0l64 104M644 0l-64 104"/>
+  </g>
+  <text x="974" y="268" font-size="21" fill="#e6edf3" font-weight="600">A live, stealth-capable, autonomous Chrome</text>
+  <text x="974" y="296" font-size="21" fill="#8b949e">inside your DeepSeek Harness conversation.</text>
 
   <!-- chips -->
   <g font-size="14">
-    <rect x="834" y="312" width="118" height="30" rx="15" fill="#161b22" stroke="#30363d"/>
-    <text x="893" y="332" fill="#a5d6ff" text-anchor="middle">zero cloud</text>
-    <rect x="962" y="312" width="132" height="30" rx="15" fill="#161b22" stroke="#30363d"/>
-    <text x="1028" y="332" fill="#a5d6ff" text-anchor="middle">zero accounts</text>
-    <rect x="1104" y="312" width="150" height="30" rx="15" fill="#161b22" stroke="#30363d"/>
-    <text x="1179" y="332" fill="#a5d6ff" text-anchor="middle">CAPTCHA → you</text>
-    <rect x="1264" y="312" width="168" height="30" rx="15" fill="#161b22" stroke="#30363d"/>
-    <text x="1348" y="332" fill="#a5d6ff" text-anchor="middle">watch every click</text>
+    <rect x="974" y="322" width="118" height="30" rx="15" fill="#161b22" stroke="#30363d"/>
+    <text x="1033" y="342" fill="#a5d6ff" text-anchor="middle">zero cloud</text>
+    <rect x="1102" y="322" width="132" height="30" rx="15" fill="#161b22" stroke="#30363d"/>
+    <text x="1168" y="342" fill="#a5d6ff" text-anchor="middle">zero accounts</text>
+    <rect x="1244" y="322" width="150" height="30" rx="15" fill="#161b22" stroke="#30363d"/>
+    <text x="1319" y="342" fill="#a5d6ff" text-anchor="middle">CAPTCHA → you</text>
+    <rect x="1404" y="322" width="152" height="30" rx="15" fill="#161b22" stroke="#30363d"/>
+    <text x="1480" y="342" fill="#a5d6ff" text-anchor="middle">watch every click</text>
   </g>
-  <text x="834" y="392" font-size="15" fill="#586069">27 tools · live stream you can grab · replay reels of the agent's hands</text>
-  <text x="834" y="418" font-size="15" fill="#586069">github.com/canelaslorenzoenego-ai/Orderzx</text>
+  <text x="974" y="398" font-size="15" fill="#586069">27 tools · live stream you can grab · replay reels of the agent's hands</text>
+  <text x="974" y="424" font-size="15" fill="#586069" class="mono">github.com/canelaslorenzoenego-ai/Orderzx · v0.2.0-rc.3</text>
 </svg>

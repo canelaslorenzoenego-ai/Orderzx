@@ -5,6 +5,7 @@
 [![version](https://img.shields.io/badge/version-v0.2.0--rc.1-1f6feb?style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.2.0-rc.1)
 [![platform](https://img.shields.io/badge/platform-Chromium_150%2B_%C2%B7_3_engines-238636?style=flat-square)](#what-it-is)
 [![smoke tests](https://img.shields.io/badge/smoke_tests-570%2F570_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
+[![ci](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml/badge.svg)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml)
 [![backend](https://img.shields.io/badge/backend-none_%C2%B7_on--loopback-9a6700?style=flat-square)](#security-posture)
 [![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
 [![ci](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml/badge.svg)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml)

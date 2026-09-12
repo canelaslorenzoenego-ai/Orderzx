@@ -50,11 +50,12 @@ opt-in because listeners are a detectable surface; while armed, the stream's
 `stealth.debugTap` flag and the drawer's own banner say so plainly) feeding ring
 buffers that a second panel drawer renders. Shipped.
 
-## ◐ CI that earns the badge
+## ✓ CI that earns the badge
 GitHub Actions runs the five static suites on every push (Node 22, `npm ci`,
-full build) — workflow shipped, first green run pending. Then the README's static
-count shield gains a live `build passing` sibling; live/e2e stay local because
-they need a real Chromium and we will not phone a third-party site from CI.
+full build). First run green on `9f51258` (job `static`, 13 steps), and the
+README now carries the live `build passing` shield next to the static count.
+live/e2e stay local because they need a real Chromium and we will not phone a
+third-party site from CI.
 
 ## ✓ WebMCP watcher (detect + report) ◌
 When sites start declaring tools for agents (`navigator.modelContext`), preferring

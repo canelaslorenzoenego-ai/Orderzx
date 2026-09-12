@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # `npm run build` shells out to pnpm; the steps below are the same three
+      # stages without the package-manager indirection.
+      - name: build
+        run: |
+          npx tsc -p tsconfig.json
+          npx tsc -p tsconfig.client.json
+          npx tsdown src/client/index.tsx --config tsdown.config.mjs --format cjs --platform browser --target es2022 --tsconfig tsconfig.client.json --out-dir .client-build --clean --sourcemap --logLevel warn
+          node scripts/build-client.mjs
+          npx tsdown --config tsdown.standalone.config.mjs
+          node scripts/build-standalone.mjs
+      - name: tools suite
+        run: node scripts/dev-tools-smoke.mjs
+      - name: routes suite
+        run: node scripts/dev-routes-static-smoke.mjs
+      - name: frames suite
+        run: node scripts/dev-frame-static-smoke.mjs
+      - name: panel suite
+        run: node scripts/dev-panel-smoke.mjs
+      # The live + e2e suites need a real Chromium and only ever touch a local
+      # fixture; they run on maintainer machines, never against third-party sites.

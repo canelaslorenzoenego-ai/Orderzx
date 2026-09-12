@@ -7,6 +7,7 @@
 [![smoke tests](https://img.shields.io/badge/smoke_tests-494%2F494_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
 [![backend](https://img.shields.io/badge/backend-none_%C2%B7_on--loopback-9a6700?style=flat-square)](#security-posture)
 [![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
+[![ci](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml/badge.svg)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml)
 
 :globe_with_meridians: [Website](https://canelaslorenzoenego-ai.github.io/Orderzx/) · :arrow_down: [Download the release](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.1.0-rc.1) · :compass: [Architecture](#what-it-is) · :hammer_and_wrench: [Build from source](#install) · :question: [FAQ](#dual-use--read-this)
 
@@ -263,6 +264,14 @@ stealth-benchmark landscape (and why the benchmarks disagree) and a gap table
 vs. the tools above.
 
 ## Install
+
+One command (clone + build + print the cordis patch line):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/canelaslorenzoenego-ai/Orderzx/main/scripts/install.sh | sh
+```
+
+Or by hand:
 
 Requires DeepSeek Harness `0.1.5-rc.2`, Node ≥ 24.11, pnpm.
 

@@ -150,8 +150,10 @@ state.takeover = false
   const tampered = `${forged.slice(0, -4)}AAAA`
   const badSig = await req(`${protocol.STATUS_ROUTE_PATH}?token=${encodeURIComponent(tampered)}`)
   step('status rejects a tampered signature', badSig.status === 403, `got ${badSig.status}`)
-  const expired = await access.signStreamToken(SESSION, { ttlMs: -1000 })
-  const expRes = await req(`${protocol.STATUS_ROUTE_PATH}?token=${encodeURIComponent(expired.token)}`)
+  // A VALIDLY SIGNED token whose exp is in the past — minted directly because
+  // the public sign API clamps ttl to >=1ms, which made this step a 1ms race.
+  const expiredToken = signToken(KEY, { v: 1, kind: 'browser-stream', session: SESSION, exp: Date.now() - 1000 })
+  const expRes = await req(`${protocol.STATUS_ROUTE_PATH}?token=${encodeURIComponent(expiredToken)}`)
   step('status rejects an expired token', expRes.status === 403, `got ${expRes.status}`)
   // A control token IS accepted by status (either kind may read), but a CAPTURE
   // token must not be: kind confusion is the classic capability bug.

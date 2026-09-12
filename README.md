@@ -4,7 +4,7 @@
 
 [![version](https://img.shields.io/badge/version-v0.2.0--rc.1-1f6feb?style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.2.0-rc.1)
 [![platform](https://img.shields.io/badge/platform-Chromium_150%2B_%C2%B7_3_engines-238636?style=flat-square)](#what-it-is)
-[![smoke tests](https://img.shields.io/badge/smoke_tests-550%2F550_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
+[![smoke tests](https://img.shields.io/badge/smoke_tests-559%2F559_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
 [![backend](https://img.shields.io/badge/backend-none_%C2%B7_on--loopback-9a6700?style=flat-square)](#security-posture)
 [![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
 [![ci](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml/badge.svg)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions/workflows/ci.yml)
@@ -62,7 +62,7 @@ you:  "book me a table at X"
   **`browser_see`** (set-of-marks screenshots — the model's eyes),
   **`browser_desktop_view`** (Chrome-for-Android "Request desktop site", for the
   agent too), `browser_act` (deterministic natural-language actions with a
-  confidence gate), `browser_click/type/press/scroll/navigate/tabs/fill_form/extract/wait`,
+  confidence gate, and a deterministic identity-verified act cache), `browser_click/type/press/scroll/navigate/tabs/fill_form/extract/wait`,
   `browser_evaluate` (config-gated), `browser_challenge`, `browser_handoff`,
   **`browser_cookies`**, **`browser_files`** (uploads fenced to the profile root,
   downloads saved under it), **`browser_workflow`** (record a human demonstration,
@@ -238,7 +238,7 @@ likelihood:
 
 Three layers of evidence, all runnable from this checkout:
 
-- **513 static assertions** (`pnpm test`, no browser): tools, routes over real
+- **522 static assertions** (`pnpm test`, no browser): tools, routes over real
   HTTP, frame transport, engine emulation, the MCP bridge spoken over a real
   spawned child's stdio, and the client bundle SSR'd in Node.
 - **22 live assertions** (`pnpm run test:live`, real Chrome): start → streaming
@@ -366,7 +366,7 @@ pnpm install
 pnpm run build              # host (tsc) + client (tsdown → lib/client.js) + standalone (→ lib/standalone.html)
 pnpm run build:standalone   # just the standalone panel page
 pnpm run typecheck
-pnpm test                   # 5 static smoke suites, 513 assertions, no browser needed
+pnpm test                   # 5 static smoke suites, 522 assertions, no browser needed
 pnpm run test:live          # 22 assertions against a real Chrome (opt-in)
 pnpm run test:e2e           # 15 assertions: real host + real routes + real client bundle
 ```

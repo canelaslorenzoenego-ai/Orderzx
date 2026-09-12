@@ -68,11 +68,13 @@ job lifecycle (start/cancel/status) that this build cannot fabricate. When cordi
 provides it, `browser_task` becomes observe → plan → act → verify over the job
 service, with the panel streaming either way.
 
-## ○ Act → deterministic cache
-Ui.Vision's other half: when `browser_act` succeeds with high confidence, cache the
-resolved ref sequence keyed by (url pattern, action text) and replay it
-deterministically next time — LLM cost drops toward zero on repeated flows.
-Depends on record→replay primitives.
+## ✓ Act → deterministic cache
+Ui.Vision's other half, shipped at our honest scale: `browser_act` caches the
+RESOLUTION (role + accessible name — never refs, never coordinates) under
+(page pattern, normalized instruction) in `<profile>/act-cache.json`. Every reuse
+re-verifies the identity against the LIVE tree: exactly one match → deterministic
+replay (`cache: "hit"`); anything else falls through to normal scoring and says
+`miss` out loud. TTL 7 days, cap 200, corrupt file = empty cache.
 
 ## ◌ Android companion parity
 dsh-android proves the whole stack can live on-device; the panel already ships a

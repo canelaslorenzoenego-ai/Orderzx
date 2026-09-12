@@ -818,4 +818,35 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   const capture = wf.identityCaptureScript(120, 80)
   step('the capture probe flags password-shaped targets', capture.includes('elementFromPoint(120, 80)') && capture.includes("type === 'password'"), capture.slice(0, 80))
 }
+
+{
+  // act → deterministic cache (Ui.Vision's other half, identity-verified).
+  const { profileRoot } = await import(pathToFileURL(join(root, 'lib', 'access.js')).href)
+  const { readFileSync, rmSync } = await import('node:fs')
+  rmSync(join(profileRoot(), 'act-cache.json'), { force: true }) // hermetic per run
+  const first = build({}, { pageOptions: { refName: 'Cache probe' } })
+  const one = await run(first.tools, TOOL_NAMES.act, { instruction: 'click "Cache probe"' })
+  step('a confident act caches its resolution', one?.ok === true && one.cache === 'new', JSON.stringify(one?.cache))
+  const two = await run(first.tools, TOOL_NAMES.act, { instruction: 'click "Cache probe"' })
+  step('the same instruction replays identity-verified from cache', two?.ok === true && two.cache === 'hit' && two.ref === 'e12', JSON.stringify(two?.cache))
+  const disk = JSON.parse(readFileSync(join(profileRoot(), 'act-cache.json'), 'utf8'))
+  const key = Object.keys(disk).find(k => k.includes('cache probe'))
+  step('the cache persists under the profile root, keyed by page pattern + instruction', typeof key === 'string' && key.startsWith('example.com/') && disk[key].name === 'Cache probe' && disk[key].hits === 1, JSON.stringify(key))
+  // Same accessible name but a different role on the page: verification fails,
+  // scoring still resolves it, and the result says miss out loud.
+  const shifted = build({}, { pageOptions: { refName: 'Cache probe', refRole: 'button' } })
+  const three = await run(shifted.tools, TOOL_NAMES.act, { instruction: 'click "Cache probe"' })
+  step('a cached resolution that fails identity verification falls through honestly', three?.ok === true && three.cache === 'miss' && three.ref === 'e12', JSON.stringify(three?.cache))
+  const four = await run(shifted.tools, TOOL_NAMES.act, { instruction: 'click "Cache probe"' })
+  step('the refreshed entry verifies on the next call', four?.ok === true && four.cache === 'hit', JSON.stringify(four?.cache))
+  const ac = await import(pathToFileURL(join(root, 'lib', 'act-cache.js')).href)
+  step('cache keys drop the query string and normalize spacing', ac.actCacheKey('https://shop.test/cart?page=2', 'Click  "Buy" ') === ac.actCacheKey('https://shop.test/cart?page=9', 'click "Buy"'), '')
+  const pruned = ac.pruneActCache({ old: { role: 'link', name: 'x', verb: 'click', savedAt: Date.now() - 8 * 864e5, hits: 0 }, fresh: { role: 'link', name: 'y', verb: 'click', savedAt: Date.now(), hits: 0 } })
+  step('expired entries are pruned on load', !pruned.old && Boolean(pruned.fresh), JSON.stringify(Object.keys(pruned)))
+  const many = {}
+  for (let i = 0; i < 250; i++) many[`k${i}`] = { role: 'link', name: `n${i}`, verb: 'click', savedAt: Date.now() - i * 1000, hits: 0 }
+  const capped = Object.keys(ac.pruneActCache(many))
+  step('the cache is capped at 200, newest first', capped.length === 200 && capped[0] === 'k0', String(capped.length))
+  step('a corrupt cache file is an empty cache, never a crash', Object.keys(ac.parseActCache('{ nope')).length === 0 && Object.keys(ac.parseActCache('[1,2]')).length === 0)
+}
 finish()

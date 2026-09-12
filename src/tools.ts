@@ -23,6 +23,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join, resolve as resolvePath } from 'node:path'
 import { profileRoot } from './access.js'
+import { ACT_CACHE_TTL_MS, actCacheKey, parseActCache, type ActCacheEntry } from './act-cache.js'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from './json-value.js'
 import type { BrowserHostController } from './host.js'
@@ -77,6 +78,32 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
   function isSensitiveTarget(name: string, role: string): boolean {
     const haystack = `${role} ${name}`.toLowerCase()
     return [...SENSITIVE_VERBS].some(verb => haystack.includes(verb))
+  }
+
+  // ── act → deterministic cache ─────────────────────────────────────────────
+  //
+  // Ui.Vision's other half, at our honest scale: cache the RESOLUTION (role +
+  // accessible name), never coordinates or refs, and verify it against the
+  // live tree on every reuse. A hit is a re-found element, not a replay of a
+  // dead one. Disk lives under the profile root, same trust boundary as the
+  // cookie jar and the workflows.
+  let actCacheMap: Map<string, ActCacheEntry> | undefined
+  const actCacheFile = (): string => join(profileRoot(), 'act-cache.json')
+  async function actCache(): Promise<Map<string, ActCacheEntry>> {
+    if (actCacheMap) return actCacheMap
+    let raw = ''
+    try {
+      raw = await (await import('node:fs/promises')).readFile(actCacheFile(), 'utf8')
+    } catch { /* first run: an empty cache */ }
+    actCacheMap = new Map(Object.entries(parseActCache(raw)))
+    return actCacheMap
+  }
+  async function actCacheSave(map: Map<string, ActCacheEntry>): Promise<void> {
+    try {
+      const { mkdir, writeFile } = await import('node:fs/promises')
+      await mkdir(profileRoot(), { recursive: true })
+      await writeFile(actCacheFile(), JSON.stringify(Object.fromEntries(map)), 'utf8')
+    } catch { /* a cache that cannot write stays in memory */ }
   }
 
   /** One line on the session timeline. Never include typed text or full URLs with query strings. */
@@ -954,7 +981,10 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       + 'so "click the Sign in button" and "type hello into search" resolve without an extra LLM round-trip and '
       + 'without any network call. When the match is not confident it does NOT guess — it returns the ranked '
       + 'candidates and you pick a ref. Verbs: click/tap/press/select, type/fill/enter/write … into …, scroll, '
-      + 'open/goto/navigate, check/uncheck. Sensitive targets still gate on approval.',
+      + 'open/goto/navigate, check/uncheck. Sensitive targets still gate on approval. '
+      + 'Confident resolutions are cached by (page, instruction) and IDENTITY-VERIFIED against the live tree on '
+      + 'reuse: a repeat call that re-finds exactly one match replays deterministically (`cache: "hit"`); anything '
+      + 'else falls through to normal scoring (`cache: "miss"` / `"new"`). The cache can never act on a stale element.',
     parameters: {
       session: sessionSchema,
       instruction: { type: 'string', required: true, description: 'What to do, e.g. `click "Sign in"`, `type hunter2 into password`, `scroll down`, `open https://example.com`.' },
@@ -972,6 +1002,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           matched: { type: 'string', description: 'Human-readable description of what was acted on.' },
           /** Ranked candidates when the match was not confident — pick one and call the specific tool. */
           candidates: { type: 'array', items: { type: 'object', additionalProperties: true } },
+          /** hit = identity-verified replay of a cached resolution; miss = entry existed but did not verify; new = just cached. */
+          cache: { type: 'string' },
           url: { type: 'string' },
           challenge: challengeSchema,
           refused: { type: 'string' },
@@ -1035,7 +1067,19 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       // Element verbs: observe, rank the tree against the instruction's target.
       const observation = await observe(host, sessionId, page, vision, exec, { capture: false })
       const target2 = parsed.target
-      const ranked = rankElements(observation.elements, target2, parsed.verb)
+      // Deterministic cache: same page pattern + same instruction, resolved by
+      // identity against the LIVE tree. A hit requires exactly one match — the
+      // cache speeds resolution up, it never guesses in place of the gate.
+      const cacheKey = actCacheKey(page.url(), instruction)
+      const cache = await actCache()
+      const entry = cache.get(cacheKey)
+      let cachedNode: (typeof observation.elements)[number] | undefined
+      if (entry && Date.now() - entry.savedAt < ACT_CACHE_TTL_MS) {
+        const matches = observation.elements.filter(el => el.role === entry.role && el.name === entry.name)
+        if (matches.length === 1) cachedNode = matches[0]
+      }
+      const cacheState: 'hit' | 'miss' | undefined = cachedNode ? 'hit' : entry ? 'miss' : undefined
+      const ranked = cachedNode ? [{ node: cachedNode, score: 1 }] : rankElements(observation.elements, target2, parsed.verb)
       if (ranked.length === 0) {
         return {
           ok: false,
@@ -1065,6 +1109,21 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       if (!box) {
         return { ok: false, action: parsed.verb, ref: node.ref, message: `${node.ref} has no box on screen; scroll or observe again` } as never
       }
+      // Cache the resolution only past the confidence gate AND the box check:
+      // an element that matched but is not on screen is not a resolution worth
+      // repeating.
+      const rememberResolution = async (): Promise<string> => {
+        const mark = cacheState === 'hit' ? 'hit' : entry ? 'miss' : 'new'
+        cache.set(cacheKey, {
+          role: node.role,
+          name: node.name,
+          verb: parsed.verb,
+          savedAt: Date.now(),
+          hits: cacheState === 'hit' ? (entry?.hits ?? 0) + 1 : 0,
+        })
+        await actCacheSave(cache)
+        return mark
+      }
 
       if (parsed.verb === 'type') {
         const secret = /password|passwd|secret|otp|cvv|card/i.test(`${node.name} ${node.role}`)
@@ -1079,7 +1138,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         acted(sessionId, TOOL_NAMES.act, `act type ${parsed.text?.length ?? 0} chars into ${node.ref}`)
         const challenge = await detectChallenge(page)
         if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
-        return { ok: true, action: 'type', ref: node.ref, matched: `${node.role} "${node.name}"`, url: page.url(), challenge } as never
+        return { ok: true, action: 'type', ref: node.ref, matched: `${node.role} "${node.name}"`, url: page.url(), challenge, cache: await rememberResolution() } as never
       }
 
       // click / tap / select / check
@@ -1103,7 +1162,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       const challenge = await detectChallenge(page)
       if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
       acted(sessionId, TOOL_NAMES.act, `act ${parsed.verb} ${node.ref} "${node.name}"`)
-      return { ok: true, action: parsed.verb, ref: node.ref, matched: `${node.role} "${node.name}"`, url: page.url(), challenge } as never
+      return { ok: true, action: parsed.verb, ref: node.ref, matched: `${node.role} "${node.name}"`, url: page.url(), challenge, cache: await rememberResolution() } as never
     },
   })
 

@@ -1,6 +1,6 @@
 ![Orderzx — an autonomous, stealth-first browser for DeepSeek Harness: the wordmark over a dark neon grid beside an animated panel mock with session tabs, a live page stream and the agent's ghost cursor](docs/assets/orderzx-banner.svg)
 
-**Release:** [v0.1.0-rc.1](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.1.0-rc.1) · **Showcase site:** [`site/index.html`](site/index.html) (single self-contained file — open it anywhere)
+**Release:** [v0.1.0-rc.1](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.1.0-rc.1) · **Showcase site:** [canelaslorenzoenego-ai.github.io/Orderzx](https://canelaslorenzoenego-ai.github.io/Orderzx/) ([`docs/index.html`](docs/index.html) — single self-contained file, served by GitHub Pages)
 
 # Orderzx
 

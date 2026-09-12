@@ -1,0 +1,20 @@
+# dsh-browser bundle patch: mounts the plugin into a profile layer stack.
+#
+# ONE row. The package is a single Cordis plugin; the engine seam, the frame
+# pipeline, the web routes and the tool family are all registered from one
+# `apply(ctx)` so they share one lifecycle and unwind together.
+#
+# The profile's own cordis.patch.yml and any --patch overlays still apply after
+# this layer, so this row can be overridden by id downstream. That is how a
+# user swaps the engine provider, retunes the frame source, or disables the
+# challenge pipeline — in config, without forking this package:
+#
+#   - replace:
+#       - id: dsh-browser
+#         config:
+#           engine: { provider: cloakbrowser, headless: false, humanize: true }
+#           frames: { source: screencast, maxFps: 20 }
+#           challenge: { autoSolver: off }
+- insert:
+    - id: dsh-browser
+      name: '@dsh-community/dsh-browser'

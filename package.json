@@ -1,0 +1,142 @@
+{
+  "name": "@dsh-community/dsh-browser",
+  "version": "0.1.0-rc.1",
+  "description": "DeepSeek Harness plugin \u2014 a live, stealth-capable Chrome inside the conversation. Tiered frame transport, Patchright engine seam, four-tier CAPTCHA pipeline with interactive human handoff, and a page-owned browser panel the user can grab the mouse in. Tested against DSH 0.1.5-rc.2.",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "browser",
+    "chrome",
+    "playwright",
+    "patchright",
+    "stealth",
+    "captcha",
+    "live-stream",
+    "plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/you/dsh-browser.git"
+  },
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "scripts",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm run build:client && pnpm run build:standalone",
+    "build:client": "tsc -p tsconfig.client.json && tsdown src/client/index.tsx --config tsdown.config.mjs --format cjs --platform browser --target es2022 --tsconfig tsconfig.client.json --out-dir .client-build --clean --sourcemap --logLevel warn && node scripts/build-client.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-frame-static-smoke.mjs && node scripts/dev-panel-smoke.mjs",
+    "test:live": "DSH_BROWSER_LIVE=1 node scripts/dev-live-smoke.mjs",
+    "build:standalone": "tsdown --config tsdown.standalone.config.mjs && node scripts/build-standalone.mjs"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "pnpm": {
+    "autoInstallPeers": true,
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "dshHostRuntime": {
+    "server": {
+      "requiredServices": [
+        "tools"
+      ],
+      "optionalServices": [
+        "skills",
+        "webServer",
+        "attachments",
+        "llm",
+        "jobs"
+      ],
+      "requiredPackages": {
+        "@deepseek-ai/dsh-tools": "0.1.5-rc.2"
+      }
+    },
+    "client": {
+      "requiredPackages": {
+        "@deepseek-ai/dsh-client-locale": "0.1.5-rc.2",
+        "@deepseek-ai/dsh-client-ui-conversation": "0.1.5-rc.2",
+        "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.2",
+        "@deepseek-ai/dsh-client-ui-session": "0.1.5-rc.2",
+        "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.2",
+        "@deepseek-ai/dsh-client-ui-theme": "0.1.5-rc.2",
+        "@deepseek-ai/dsh-client-ui-tool": "0.1.5-rc.2",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+      },
+      "resolution": "not exercised by the server/headless plugin entry"
+    },
+    "external": {
+      "patchright": "optional \u2014 engine provider `patchright`. Falls back to `playwright-core` against the system Chrome channel when absent.",
+      "cloakbrowser": "optional \u2014 engine provider `cloakbrowser`. Adds the `humanize` behavioral layer and source-level fingerprint patches.",
+      "note": "Inert documentation only; host packages are intentionally absent from dependencies and peerDependencies. Optional engines are resolved lazily at provider construction so a missing package degrades to a clear tool error instead of a boot failure."
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-client-locale": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-session": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-theme": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-tool": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-fs": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-session": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.2",
+    "@types/node": "^26.2.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.1",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.56.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3",
+    "ws": "^8.21.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-tool",
+        "@deepseek-ai/dsh-client-ui-theme"
+      ],
+      "platform": "web"
+    }
+  }
+}

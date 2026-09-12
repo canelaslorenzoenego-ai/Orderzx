@@ -1,0 +1,7 @@
+node_modules/
+.client-build/
+.standalone-build/
+lib/
+dist/
+*.tsbuildinfo
+.DS_Store

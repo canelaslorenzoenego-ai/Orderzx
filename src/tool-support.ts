@@ -196,6 +196,8 @@ export interface ObservationResult {
   viewport: { width: number; height: number }
   capturePath?: string
   image?: BrowserImageRef
+  /** The page declares agent tools (WebMCP, `navigator.modelContext`). Watched, not yet consumed — see ROADMAP. */
+  siteTools?: boolean
 }
 
 /**
@@ -222,6 +224,12 @@ export async function observe(
 
   rememberElements(sessionId, elements)
 
+  // WebMCP watcher: detect, report, do not consume. One cheap probe per observe;
+  // the integration stays parked in ROADMAP.md until the spec settles.
+  const siteTools = await page
+    .evaluateIsolated<boolean>(`(() => { try { return typeof navigator.modelContext !== 'undefined' || typeof navigator.modelContextTesting !== 'undefined' } catch { return false } })()`)
+    .catch(() => false)
+
   const result: ObservationResult = {
     url: snapshot?.url ?? page.url(),
     title: snapshot?.title ?? '',
@@ -230,6 +238,7 @@ export async function observe(
     truncated: snapshot?.truncated ?? false,
     challenge,
     viewport: page.viewport(),
+    siteTools: siteTools === true,
   }
 
   if (options.capture !== false) {
@@ -413,6 +422,40 @@ export async function resolveRefBox(page: EnginePage, sessionId: string, ref: st
   if (!healed || healed === ref) return { ref, box: undefined }
   const box = await page.boxOf(healed).catch(() => undefined)
   return box ? { ref: healed, box, healedFrom: ref } : { ref, box: undefined }
+}
+
+/**
+ * Validate a value against the subset of JSON Schema extract() accepts as a
+ * contract: type (object/array/string/number/integer/boolean), required,
+ * properties, items, enum. Returns human-readable violation paths — the model
+ * repairs against THESE, not against a prose shrug.
+ */
+export function validateSchema(data: unknown, schema: Record<string, unknown>, path = '$'): string[] {
+  const out: string[] = []
+  const type = schema.type as string | undefined
+  const isInt = typeof data === 'number' && Number.isInteger(data)
+  if (type === 'object') { if (typeof data !== 'object' || data === null || Array.isArray(data)) return [`${path}: expected object`] }
+  else if (type === 'array') { if (!Array.isArray(data)) return [`${path}: expected array`] }
+  else if (type === 'string') { if (typeof data !== 'string') return [`${path}: expected string`] }
+  else if (type === 'number') { if (typeof data !== 'number' || !Number.isFinite(data)) return [`${path}: expected finite number`] }
+  else if (type === 'integer') { if (!isInt) return [`${path}: expected integer`] }
+  else if (type === 'boolean') { if (typeof data !== 'boolean') return [`${path}: expected boolean`] }
+  if (Array.isArray(schema.enum) && !(schema.enum as unknown[]).includes(data)) out.push(`${path}: value not in enum`)
+  if (type === 'object' && typeof data === 'object' && data !== null && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>
+    for (const req of (schema.required ?? []) as string[]) {
+      if (!(req in obj) || obj[req] === undefined) out.push(`${path}.${req}: missing required property`)
+    }
+    const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>
+    for (const [key, sub] of Object.entries(props)) {
+      if (key in obj && obj[key] !== undefined) out.push(...validateSchema(obj[key], sub, `${path}.${key}`))
+    }
+  }
+  if (type === 'array' && Array.isArray(data) && schema.items && typeof schema.items === 'object') {
+    const cap = Math.min(data.length, 200)
+    for (let i = 0; i < cap; i++) out.push(...validateSchema(data[i], schema.items as Record<string, unknown>, `${path}[${i}]`))
+  }
+  return out
 }
 
 export { MARK_NAME_LENGTH, MAX_MARKS, MAX_MARKS as SEE_MAX_MARKS }

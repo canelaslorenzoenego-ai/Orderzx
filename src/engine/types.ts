@@ -80,6 +80,13 @@ export interface EnginePage {
   /** Resolve a snapshot ref to a viewport-space box. */
   boxOf(ref: string): Promise<{ x: number; y: number; width: number; height: number } | undefined>
 
+  /** Attach local files to a file input. Paths are fenced by the tool layer BEFORE this is called. */
+  setFiles(ref: string, paths: string[]): Promise<void>
+  /** Read back a field's value — the form-verify half of fill_form. Undefined for non-input roles. */
+  inputValue(ref: string): Promise<string | undefined>
+  /** Click a ref and save the download it triggers. Returns size + suggested filename. */
+  downloadByClick(ref: string, destPath: string, timeoutMs: number): Promise<{ bytes: number; suggested: string }>
+
   /** Raw PNG/JPEG of the viewport. The `screenshot` frame tier is built on this. */
   capture(opts?: { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean }): Promise<Uint8Array>
 

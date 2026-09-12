@@ -20,6 +20,9 @@
  * @module @dsh-community/dsh-browser/tools
  */
 
+import { mkdir } from 'node:fs/promises'
+import { join, resolve as resolvePath } from 'node:path'
+import { profileRoot } from './access.js'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from './json-value.js'
 import type { BrowserHostController } from './host.js'
@@ -43,6 +46,7 @@ import {
   resolveMark,
   clearMarks,
   resolveRefBox,
+  validateSchema,
   refSchema,
   refusalValue,
   resolveSession,
@@ -824,8 +828,9 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         },
       },
       submitRef: { type: 'string', description: 'Ref to click after filling. Treated as a sensitive action.' },
+      verify: { type: 'boolean', description: 'Read every field back after filling and report per-field expected-vs-actual. Default true — turn it off only for fields that transform input (masks, autocorrect).' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, filled: { type: 'number' }, failed: { type: 'number' }, results: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } }, submitted: { type: 'boolean' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, filled: { type: 'number' }, failed: { type: 'number' }, verified: { type: 'number' }, mismatched: { type: 'number' }, results: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } }, submitted: { type: 'boolean' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
@@ -854,7 +859,22 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         // Gap between fields. Humans do not fill a form at machine cadence.
         await sleep(180 + Math.random() * 420, exec.signal).catch(() => undefined)
         filled += 1
-        results.push({ ref: field.ref, ok: true, characters: field.value.length })
+        results.push({ ref: field.ref, ok: true, characters: field.value.length, expected: field.value })
+      }
+
+      // Form strategy: filling is half the job. Read every field back through an
+      // isolated-world value probe so a silent mask, autocomplete or formatter
+      // surfaces as a mismatch instead of a confident "filled".
+      let verified = 0
+      let mismatched = 0
+      if (args.verify !== false) {
+        for (const entry of results) {
+          if (entry.ok !== true || typeof entry.ref !== 'string' || typeof entry.expected !== 'string') continue
+          const actual = await page.inputValue(entry.ref).catch(() => undefined)
+          if (actual === undefined) continue
+          entry.actual = actual
+          if (actual === entry.expected) { entry.verified = true; verified += 1 } else { entry.verified = false; mismatched += 1 }
+        }
       }
 
       let submitted = false
@@ -876,7 +896,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
 
       const challenge = await detectChallenge(page)
       if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
-      return { ok: filled > 0, filled, failed: results.length - filled, results, submitted, url: page.url(), challenge } as never
+      return { ok: filled > 0, filled, failed: results.length - filled, verified, mismatched, results, submitted, url: page.url(), challenge } as never
     },
   })
 
@@ -890,8 +910,10 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       session: sessionSchema,
       instruction: { type: 'string', required: true, description: 'What to extract, in plain language.' },
       selector: { type: 'string', description: 'Optional CSS selector to scope extraction to a subtree.' },
+      schema: { type: 'object', additionalProperties: true, description: 'Optional JSON-schema CONTRACT for your own structured attempt. Pass it together with `data`; this tool validates before anything downstream trusts it.' },
+      data: { type: 'object', additionalProperties: true, description: 'Your structured attempt, shaped to `schema`. On violation the tool returns the exact paths plus a DEEPER text pass to repair against — one round-trip, not three.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, url: { type: 'string' }, text: { type: 'string' }, elements: elementsSchema, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, url: { type: 'string' }, text: { type: 'string' }, elements: elementsSchema, validated: { type: 'boolean' }, data: { type: 'object', additionalProperties: true }, violations: { type: 'array', items: { type: 'string' } }, siteTools: { type: 'boolean' }, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
@@ -899,12 +921,28 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       const result = await observe(host, target.sessionId, target.page, vision, exec, { capture: false })
       // Bounded text: an unbounded page body would blow the context budget and
       // the harness would truncate it somewhere we cannot see.
-      const text = await target.page
+      const slice = (limit: number) => target.page
         .evaluateIsolated<string>(
-          `(() => { const root = document.querySelector(${JSON.stringify(args.selector ?? 'body')}) || document.body; return (root.innerText || '').slice(0, 24000); })()`,
+          `(() => { const root = document.querySelector(${JSON.stringify(args.selector ?? 'body')}) || document.body; return (root.innerText || '').slice(0, ${limit}); })()`,
         )
         .catch(() => '')
-      return { ok: true, url: result.url, instruction: args.instruction, text, elements: result.elements } as never
+      const text = await slice(24000)
+
+      // The schema is a CONTRACT on the model's own structured attempt: validate
+      // before anything downstream trusts it, and on violation answer with the
+      // exact paths plus a deeper text pass — repair in one round-trip.
+      if (args.schema && typeof args.schema === 'object') {
+        if (!args.data || typeof args.data !== 'object') {
+          return { ok: false, message: '`schema` requires a `data` object to validate — pass your structured attempt alongside the contract', violations: ['$: no data supplied'], text, elements: result.elements } as never
+        }
+        const violations = validateSchema(args.data, args.schema as Record<string, unknown>)
+        if (violations.length === 0) {
+          return { ok: true, url: result.url, instruction: args.instruction, validated: true, data: args.data, siteTools: result.siteTools === true } as never
+        }
+        const deeper = await slice(48000)
+        return { ok: false, url: result.url, instruction: args.instruction, validated: false, violations, text: deeper, elements: result.elements, message: `data violates the schema in ${violations.length} place(s); repair against the violations and the deeper text pass` } as never
+      }
+      return { ok: true, url: result.url, instruction: args.instruction, text, elements: result.elements, siteTools: result.siteTools === true } as never
     },
   })
 
@@ -1497,6 +1535,84 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     },
   })
 
+  const browserFiles = defineTool({
+    name: TOOL_NAMES.files,
+    description:
+      'Upload local files into a file input, or save a download the page offers. '
+      + 'UPLOAD FENCE: paths must live under the browser profile root — a model-named path '
+      + 'never reaches setInputFiles unchecked, so a prompt injection cannot exfiltrate arbitrary disks into a '
+      + 'website. Stage files there first (your own tooling) or widen the root deliberately. '
+      + 'DOWNLOAD: arms a download listener, clicks the ref, streams into <profile>/downloads/<session>/ and answers '
+      + 'with size + suggested filename; the bytes stay on this machine.',
+    parameters: {
+      session: sessionSchema,
+      action: { type: 'string', enum: ['upload', 'download'], required: true, description: 'upload = set input files; download = click and save.' },
+      ref: refSchema,
+      paths: { type: 'array', items: { type: 'string' }, description: 'upload: file paths under the profile root.' },
+      timeoutMs: { type: 'number', description: 'download: how long to wait for the download event. Default 20000.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          uploaded: { type: 'number' },
+          path: { type: 'string' },
+          bytes: { type: 'number' },
+          suggested: { type: 'string' },
+          refused: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      const resolved = resolveSession(host, args.session)
+      if (!resolved.ok) return refusalValue(resolved) as never
+      const gate = host.gate(resolved.sessionId)
+      if (!gate.ok) return refusalValue(gate) as never
+      const page = gate.session.browser.activePage()
+      if (!page) return { ok: false, message: 'no active page' } as never
+      const action = String(args.action)
+      if (action === 'upload') {
+        const refs = typeof args.ref === 'string' ? args.ref : undefined
+        const paths = Array.isArray(args.paths) ? (args.paths as string[]) : []
+        if (!refs) return { ok: false, message: 'upload needs the file input `ref`' } as never
+        if (paths.length === 0 || paths.length > 10) return { ok: false, message: 'upload needs 1..10 paths' } as never
+        const root = resolvePath(profileRoot())
+        const clean: string[] = []
+        for (const raw of paths) {
+          const abs = resolvePath(String(raw))
+          if (abs !== root && !abs.startsWith(root + '/')) {
+            return { ok: false, message: `upload fence: ${String(raw)} is outside the browser profile root — stage it there first or widen the root deliberately` } as never
+          }
+          clean.push(abs)
+        }
+        await page.setFiles(refs, clean)
+        acted(resolved.sessionId, TOOL_NAMES.files, `upload ${clean.length} file(s)`)
+        return { ok: true, uploaded: clean.length } as never
+      }
+      if (action === 'download') {
+        const refs = typeof args.ref === 'string' ? args.ref : undefined
+        if (!refs) return { ok: false, message: 'download needs the ref that triggers it' } as never
+        const dir = join(profileRoot(), 'downloads', resolved.sessionId)
+        await mkdir(dir, { recursive: true })
+        const timeout = typeof args.timeoutMs === 'number' ? args.timeoutMs : 20_000
+        // Save under a temp name first: suggestedFilename() is only known after
+        // the event fires, and a site-controlled filename must never become a path.
+        const tmp = join(dir, `dl-${Date.now().toString(36)}.part`)
+        const { bytes, suggested } = await page.downloadByClick(refs, tmp, timeout)
+        const safe = suggested.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120) || 'download.bin'
+        const finalPath = join(dir, safe)
+        const { rename, unlink } = await import('node:fs/promises')
+        await rename(tmp, finalPath).catch(async () => { await unlink(tmp).catch(() => undefined); throw new Error('could not finalize download path') })
+        acted(resolved.sessionId, TOOL_NAMES.files, `download ${safe}`)
+        return { ok: true, path: finalPath, bytes, suggested: safe } as never
+      }
+      return { ok: false, message: 'action must be upload or download' } as never
+    },
+  })
+
   // Keyed by WIRE NAME, not by local variable: consumers (the host entry's
   // effect labels, the smoke suites, third-party composition) all think in
   // `browser_click`, never `browserClick`.
@@ -1505,6 +1621,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     browserScroll, browserNavigate, browserTabs, browserFillForm, browserExtract, browserWait,
     browserEvaluate, browserChallenge, browserHandoff, browserTakeover, browserTask, browserAct, browserDesktopView,
     browserCookies,
+    browserFiles,
   ]
   return Object.fromEntries(all.map(tool => [tool.name, tool]))
 }

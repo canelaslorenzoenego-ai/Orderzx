@@ -356,6 +356,30 @@ class CloakPage implements EnginePage {
     })
     return { url: this.url(), title: await this.title().catch(() => ''), nodes, nodeCount: nodes.length, truncated: false }
   }
+  async setFiles(ref: string, paths: string[]): Promise<void> {
+    const entry = this.#refs.get(ref)
+    if (!entry) throw new EngineError(`stale element ref '${ref}' — call browser_observe again`, 'E_STALE_REF')
+    await this.raw.locator(entry.selector).first().setInputFiles(paths)
+  }
+
+  async inputValue(ref: string): Promise<string | undefined> {
+    const entry = this.#refs.get(ref)
+    if (!entry) return undefined
+    return (await this.raw.locator(entry.selector).first().inputValue().catch(() => undefined)) ?? undefined
+  }
+
+  async downloadByClick(ref: string, destPath: string, timeoutMs: number): Promise<{ bytes: number; suggested: string }> {
+    const entry = this.#refs.get(ref)
+    if (!entry) throw new EngineError(`stale element ref '${ref}' — call browser_observe again`, 'E_STALE_REF')
+    const [download] = await Promise.all([
+      this.raw.waitForEvent('download', { timeout: timeoutMs }),
+      this.raw.locator(entry.selector).first().click(),
+    ])
+    await download.saveAs(destPath)
+    const { stat } = await import('node:fs/promises')
+    return { bytes: (await stat(destPath)).size, suggested: download.suggestedFilename() }
+  }
+
   async boxOf(ref: string) {
     const entry = this.#refs.get(ref)
     if (!entry) throw new EngineError(`stale element ref '${ref}' — call browser_observe again`, 'E_STALE_REF')

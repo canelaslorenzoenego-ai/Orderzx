@@ -142,6 +142,27 @@ export const cdpProvider: EngineProviderAdapter = {
             truncated: countLeaves(nodes) >= maxNodes,
           }
         },
+        setFiles: async (ref, paths) => {
+          const entry = refs.get(ref)
+          if (!entry) throw new EngineError(`stale element ref '${ref}' — call browser_observe again`, 'E_STALE_REF')
+          await raw.locator(entry.selector).first().setInputFiles(paths)
+        },
+        inputValue: async ref => {
+          const entry = refs.get(ref)
+          if (!entry) return undefined
+          return (await raw.locator(entry.selector).first().inputValue().catch(() => undefined)) ?? undefined
+        },
+        downloadByClick: async (ref, destPath, timeoutMs) => {
+          const entry = refs.get(ref)
+          if (!entry) throw new EngineError(`stale element ref '${ref}' — call browser_observe again`, 'E_STALE_REF')
+          const [download] = await Promise.all([
+            raw.waitForEvent('download', { timeout: timeoutMs }),
+            raw.locator(entry.selector).first().click(),
+          ])
+          await download.saveAs(destPath)
+          const { stat } = await import('node:fs/promises')
+          return { bytes: (await stat(destPath)).size, suggested: download.suggestedFilename() }
+        },
         boxOf: async ref => {
           const entry = refs.get(ref)
           if (!entry) {

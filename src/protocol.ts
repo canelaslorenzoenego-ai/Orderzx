@@ -82,6 +82,7 @@ export const TOOL_NAMES = {
   task: 'browser_task',
   desktopView: 'browser_desktop_view',
   cookies: 'browser_cookies',
+  files: 'browser_files',
 } as const
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES]

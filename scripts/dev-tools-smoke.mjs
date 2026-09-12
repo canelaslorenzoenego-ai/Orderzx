@@ -11,7 +11,7 @@
  * read as a failure.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -75,7 +75,17 @@ function makeFakePage(options = {}) {
       calls.push({ name: 'evaluateIsolated', args: [String(script).slice(0, 60)] })
       ;(scripts).push(String(script))
       if (String(script).includes('current-password')) return options.secret ?? false
+      if (String(script).includes('modelContext')) return options.siteTools ?? false
+      if (String(script).includes('innerText')) return options.bodyText ?? 'The quick brown fox.'
       return undefined // the challenge probe sees a clean page
+    },
+    inputValue: async ref => (options.fieldValues ?? {})[ref],
+    setFiles: async (ref, paths) => { calls.push({ name: 'setFiles', args: [ref, paths] }) },
+    downloadByClick: async (ref, dest, timeout) => {
+      calls.push({ name: 'downloadByClick', args: [ref, dest, timeout] })
+      mkdirSync(dirname(dest), { recursive: true })
+      writeFileSync(dest, 'hello')
+      return { bytes: 5, suggested: options.downloadName ?? 'report.pdf' }
     },
     input: {
       click: record('input.click'),
@@ -698,6 +708,57 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   }
   const res = await run(tools, TOOL_NAMES.type, { ref: 'e9', text: 'hello' })
   step('type self-heals a dead field ref too', res.ok === true && host.gestures.some(g => g.event?.type === 'note' && /self-healed ref e9/.test(g.event?.text ?? '')), JSON.stringify(res).slice(0, 160))
+}
+
+{
+  // extract(): the schema is a contract on the model's own data.
+  const { tools } = build()
+  const good = await run(tools, TOOL_NAMES.extract, {
+    instruction: 'menu prices',
+    schema: { type: 'object', required: ['items'], properties: { items: { type: 'array', items: { type: 'object', required: ['name', 'price'], properties: { name: { type: 'string' }, price: { type: 'number' } } } } } },
+    data: { items: [{ name: 'Margherita', price: 12.5 }] },
+  })
+  step('extract validates conforming data against the schema', good?.ok === true && good.validated === true && good.data?.items?.length === 1, JSON.stringify(good).slice(0, 160))
+  const bad = await run(tools, TOOL_NAMES.extract, {
+    instruction: 'menu prices',
+    schema: { type: 'object', required: ['items'], properties: { items: { type: 'array', items: { type: 'object', required: ['name', 'price'], properties: { name: { type: 'string' }, price: { type: 'number' } } } } } },
+    data: { items: [{ name: 'Margherita', price: 'twelve' }] },
+  })
+  step('extract reports exact violation paths + a deeper repair pass', bad?.ok === false && Array.isArray(bad.violations) && bad.violations.some(v => /items\[0\]\.price/.test(v)) && typeof bad.text === 'string', JSON.stringify(bad).slice(0,300))
+  const noData = await run(tools, TOOL_NAMES.extract, { instruction: 'x', schema: { type: 'object' } })
+  step('extract refuses to validate nothing', noData?.ok === false && /data/.test(noData.message ?? ''), JSON.stringify(noData).slice(0, 120))
+}
+
+{
+  // fill_form(): read-back verification, the form-strategy half.
+  const { tools } = build({}, { pageOptions: { fieldValues: { e20: 'hello', e21: 'TRANSFORMED' } } })
+  const res = await run(tools, TOOL_NAMES.fillForm, { fields: [{ ref: 'e20', value: 'hello' }, { ref: 'e21', value: 'world' }] })
+  step('fill_form verifies fields that read back equal', res?.ok === true && res.verified === 1 && res.results[0]?.verified === true, JSON.stringify(res?.results))
+  step('fill_form flags transformed fields as mismatched, not filled-and-fine', res?.mismatched === 1 && res.results[1]?.verified === false && res.results[1]?.actual === 'TRANSFORMED', JSON.stringify(res?.results?.[1]))
+  const off = await run(tools, TOOL_NAMES.fillForm, { fields: [{ ref: 'e20', value: 'hello' }], verify: false })
+  step('verify:false skips the read-back', off?.ok === true && off.verified === 0 && off.mismatched === 0 && off.results[0]?.verified === undefined, JSON.stringify(off?.results))
+}
+
+{
+  // browser_files(): the upload fence is the whole point.
+  const { tools, host } = build()
+  const fenced = await run(tools, TOOL_NAMES.files, { action: 'upload', ref: 'e30', paths: ['/etc/passwd'] })
+  step('upload refuses paths outside the profile root', fenced?.ok === false && /fence/i.test(fenced.message ?? '') && !host.calls.some(c => c.name === 'setFiles'), JSON.stringify(fenced).slice(0, 160))
+  const { profileRoot } = await import(pathToFileURL(join(root, 'lib', 'access.js')).href)
+  const allowed = await run(tools, TOOL_NAMES.files, { action: 'upload', ref: 'e30', paths: [join(profileRoot(), 'staged', 'invoice.pdf')] })
+  step('upload accepts staged paths under the profile root', allowed?.ok === true && allowed.uploaded === 1 && !('message' in (allowed ?? {})), JSON.stringify(allowed).slice(0, 140))
+  const dl = await run(tools, TOOL_NAMES.files, { action: 'download', ref: 'e31' })
+  step('download saves under the profile with a sanitized name', dl?.ok === true && dl.bytes === 5 && /report\.pdf$/.test(dl.path ?? '') && dl.path.includes('downloads'), JSON.stringify(dl).slice(0, 160))
+  const sneaky = build({}, { pageOptions: { downloadName: '../../evil.sh' } })
+  const dl2 = await run(sneaky.tools, TOOL_NAMES.files, { action: 'download', ref: 'e31' })
+  step('a site-controlled filename cannot escape the downloads dir', dl2?.ok === true && dl2.path.includes('/downloads/') && !dl2.path.includes('../') && dl2.path.endsWith('evil.sh'), JSON.stringify(dl2?.path))
+}
+
+{
+  // WebMCP watcher: detect and report, never consume.
+  const { tools } = build({}, { pageOptions: { siteTools: true } })
+  const seen = await run(tools, TOOL_NAMES.observe, {})
+  step('observe reports sites that declare agent tools (WebMCP)', seen?.siteTools === true, JSON.stringify(seen?.siteTools))
 }
 
 finish()

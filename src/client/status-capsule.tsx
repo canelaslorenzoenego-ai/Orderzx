@@ -109,6 +109,10 @@ export function installCapsuleKeyframes(doc: Document): void {
  * without any text having to change.
  */
 export function MonitorGlyph({ step, tone }: { step: BootState['step']; tone: 'busy' | 'live' | 'attention' | 'error' }): ReactNode {
+  const glyphLabel = tone === 'live' ? 'browser live — frames arriving'
+    : tone === 'attention' ? `browser needs you — ${step}`
+    : tone === 'error' ? 'browser error'
+    : `browser ${step}`
   const duration = step === 'spinning-up' ? '1.5s' : step === 'warming' ? '1.1s' : step === 'hardening' ? '0.8s' : '0.55s'
   const screen = tone === 'live' ? '#3fb950' : tone === 'attention' ? '#d29922' : tone === 'error' ? '#f85149' : '#58a6ff'
   // The screen is not a coloured rectangle: each boot step paints its own
@@ -117,7 +121,8 @@ export function MonitorGlyph({ step, tone }: { step: BootState['step']; tone: 'b
   // Same 20×17 footprint as v1 so every layout that fits the old glyph fits
   // this one.
   return (
-    <svg width="20" height="17" viewBox="0 0 20 17" fill="none" aria-hidden="true" style={{ flex: '0 0 auto', display: 'block' }}>
+    <svg width="20" height="17" viewBox="0 0 20 17" fill="none" role="img" aria-label={glyphLabel} style={{ flex: '0 0 auto', display: 'block' }}>
+      <title>{glyphLabel}</title>
       {/* shell */}
       <rect x="0.6" y="0.6" width="18.8" height="12.6" rx="2.2" stroke="currentColor" strokeWidth="1.1" opacity="0.72" />
       {/* screen */}

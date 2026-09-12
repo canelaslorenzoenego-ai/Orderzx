@@ -366,6 +366,12 @@ export interface BrowserStatus {
     viewport: { width: number; height: number }
     tabs: Array<{ index: number; title: string; url: string; active: boolean }>
     activeTab: number
+    /**
+     * What this provider can actually do, so the model (and the panel) can
+     * check before calling instead of eating a refusal. A posture that stays
+     * silent about its gaps is a posture that lies by omission.
+     */
+    capabilities: { cookies: boolean }
   }
   frames?: {
     source: FrameSource

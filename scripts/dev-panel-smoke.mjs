@@ -425,6 +425,8 @@ const el = React.createElement
   step('the power LED goes solid once frames arrive', !liveGlyph.includes('dsh-browser-blink'))
   const errGlyph = renderToString(el(MonitorGlyph, { step: 'warming', tone: 'error' }))
   step('the error glyph is a static X (nothing to animate)', errGlyph.includes('M7.6 4.6l4.8 4.8') && !errGlyph.includes('dsh-browser-pips'))
+  step('the glyph announces its step to screen readers', glyphHtml.includes('role="img"') && /aria-label="browser warming"/.test(glyphHtml) && glyphHtml.includes('<title>'), glyphHtml.slice(0, 140))
+  step('the live glyph says frames are arriving', /aria-label="browser live — frames arriving"/.test(liveGlyph))
 
   // Panel store semantics.
   const store = createPanelStore()
@@ -527,6 +529,7 @@ const el = React.createElement
   const av2 = originAvatar('https://example.com/b?c=1')
   step('originAvatar is deterministic per host and needs no favicon fetch', av1.hue === av2.hue && av1.initial === 'E' && av1.hue >= 0 && av1.hue < 360, JSON.stringify(av1))
   step('a desktop-view session is badged with the monitor icon', html.includes('aria-label="desktop view"'))
+  step('tabs carry a rich origin tooltip', html.includes('title="researcher · example.com') && /title="bbbb2222 · shop\.test/.test(html), html.slice(0, 100))
   step('without an onClose handler no close buttons render (view-only strips stay clean)', !html.includes('aria-label="close'))
 
   // onClose is wired end-to-end at runtime; SSR proves the affordance + prop.

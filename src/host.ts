@@ -864,6 +864,7 @@ export class BrowserHostController {
           active: tab.id === page?.id,
         })),
         activeTab: Math.max(0, session.browser.pages().findIndex(tab => tab.id === page?.id)),
+        capabilities: { cookies: typeof session.browser.cookies === 'function' },
       },
       frames: {
         source: stats.effective,

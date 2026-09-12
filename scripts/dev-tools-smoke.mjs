@@ -164,6 +164,9 @@ function makeStubHost(options = {}) {
     listWorkflows: record('listWorkflows', options.workflows ?? [{ name: 'checkout-demo', steps: 7, variables: ['password'], createdAt: 1, startUrl: 'https://shop.test/' }]),
     deleteWorkflow: record('deleteWorkflow', { ok: true }),
     runWorkflow: record('runWorkflow', options.runResult ?? { ok: true, replayed: 7, fallbacks: 1, name: 'checkout-demo' }),
+    startJob: record('startJob', options.jobResult ?? { ok: true, job: 'j1ab23cd', steps: 7 }),
+    cancelJob: record('cancelJob', { ok: true }),
+    listJobs: () => options.jobs ?? [{ id: 'j1ab23cd', workflow: 'checkout-demo', status: 'running', startedAt: 1, finishedAt: null, stepsTotal: 7, stepsDone: 2, fallbacks: 0, error: null }],
     takeoverActive: () => options.owner === 'user',
   }
 }
@@ -371,8 +374,8 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   step('status config is redacted (no raw credentials path)', !JSON.stringify(status?.config).includes('hunter'), 'ok')
   step('status result is lossless JSON', findJsonViolations(status).length === 0, findJsonViolations(status).join('; '))
 
-  const task = await run(tools, TOOL_NAMES.task, { goal: 'buy a hat' })
-  step('browser_task refuses until ctx.jobs lands', task?.ok === false && typeof task.refused === 'string', JSON.stringify(task).slice(0, 160))
+  const task = await run(tools, TOOL_NAMES.task, { action: 'start', goal: 'buy a hat' })
+  step('browser_task refuses a bare goal until ctx.jobs lands', task?.ok === false && task.refused === 'policy' && /browser_workflow/.test(task.message ?? ''), JSON.stringify(task).slice(0, 160))
 }
 
 // ── sub-agent labels ────────────────────────────────────────────────────────
@@ -848,5 +851,59 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   const capped = Object.keys(ac.pruneActCache(many))
   step('the cache is capped at 200, newest first', capped.length === 200 && capped[0] === 'k0', String(capped.length))
   step('a corrupt cache file is an empty cache, never a crash', Object.keys(ac.parseActCache('{ nope')).length === 0 && Object.keys(ac.parseActCache('[1,2]')).length === 0)
+}
+
+{
+  // The replay orchestrator, pure: every step kind, identity vs fallback, abort, failure.
+  const wf = await import(pathToFileURL(join(root, 'lib', 'workflows.js')).href)
+  const calls = []
+  const page = {
+    viewport: () => ({ width: 1000, height: 1000 }),
+    goto: async url => calls.push(['goto', url]),
+    evaluateIsolated: async script => { calls.push(['probe']); return String(script).includes('Buy now') ? { x: 0.25, y: 0.5 } : null },
+    input: {
+      click: async (x, y) => calls.push(['click', x, y]),
+      typeText: async t => calls.push(['type', t]),
+      pressKey: async k => calls.push(['press', k]),
+      scroll: async (dx, dy) => calls.push(['scroll', dx, dy]),
+    },
+  }
+  const steps = [
+    { kind: 'goto', url: 'https://shop.test/' },
+    { kind: 'click', x: 0.9, y: 0.9, identity: { tag: 'button', text: 'Buy now' } },
+    { kind: 'click', x: 0.5, y: 0.2 },
+    { kind: 'type', text: 'ada' },
+    { kind: 'press', key: 'Enter' },
+    { kind: 'scroll', deltaX: 0, deltaY: 300 },
+  ]
+  const seen = []
+  const res = await wf.replayWorkflowSteps(page, steps, { paceMs: 0, onStep: p => seen.push(p.index) })
+  step('the replay loop runs every step kind in order', res.replayed === 6 && res.cancelled === false && calls[0][0] === 'goto' && calls.at(-1)[0] === 'scroll', JSON.stringify(calls.map(c => c[0])))
+  step('an identity match wins over the recorded coordinates', calls[2][0] === 'click' && calls[2][1] === 250 && calls[2][2] === 500, JSON.stringify(calls[2]))
+  step('an unmatched identity falls back to coordinates and counts it', res.fallbacks === 1 && calls[3][0] === 'click' && calls[3][1] === 500 && calls[3][2] === 200, JSON.stringify(calls[3]))
+  step('progress is reported per step, in order', seen.length === 6 && seen.join(',') === '0,1,2,3,4,5', seen.join(','))
+  const ctrl = new AbortController()
+  const aborting = { ...page, input: { ...page.input, click: async (...a) => { ctrl.abort(); return page.input.click(...a) } } }
+  const res2 = await wf.replayWorkflowSteps(aborting, [steps[1], steps[2], steps[3]], { paceMs: 0, signal: ctrl.signal })
+  step('abort lands between steps: the in-flight step finishes, the rest do not run', res2.cancelled === true && res2.replayed === 1, JSON.stringify(res2))
+  const failing = { ...page, goto: async () => { throw new Error('net::ERR_BLOCKED_BY_CLIENT') } }
+  const res3 = await wf.replayWorkflowSteps(failing, [steps[0], steps[3]], { paceMs: 0 })
+  step('a failed step stops the run and names it', res3.failedAt === 1 && /ERR_BLOCKED/.test(res3.error ?? '') && res3.replayed === 0, JSON.stringify(res3))
+}
+
+{
+  // browser_task: saved workflows as cancellable background jobs.
+  const { tools, host } = build()
+  const started = await run(tools, TOOL_NAMES.task, { action: 'start', workflow: 'checkout-demo', vars: { password: 'hunter2' } })
+  const startCall = host.calls.filter(c => c.name === 'startJob').pop()
+  step('start launches a background job with vars through the host', started?.ok === true && typeof started.job === 'string' && startCall?.args?.[1] === 'checkout-demo' && startCall?.args?.[2]?.password === 'hunter2', JSON.stringify(started).slice(0, 140))
+  const goalOnly = await run(tools, TOOL_NAMES.task, { action: 'start', goal: 'buy the thing' })
+  step('a bare goal is refused with the honest reason, pointing at browser_workflow', goalOnly?.ok === false && goalOnly.refused === 'policy' && /browser_workflow/.test(goalOnly.message ?? ''), JSON.stringify(goalOnly.message).slice(0, 140))
+  const st = await run(tools, TOOL_NAMES.task, { action: 'status', job: 'j1ab23cd' })
+  step('status reports one job with live progress', st?.ok === true && st.id === 'j1ab23cd' && st.stepsDone === 2 && st.stepsTotal === 7 && st.status === 'running', JSON.stringify(st).slice(0, 160))
+  const cancelled = await run(tools, TOOL_NAMES.task, { action: 'cancel', job: 'j1ab23cd' })
+  step('cancel reaches the host with the job id', cancelled?.ok === true && host.calls.some(c => c.name === 'cancelJob' && c.args[1] === 'j1ab23cd'))
+  const listed = await run(tools, TOOL_NAMES.task, { action: 'list' })
+  step('list returns the session job records', listed?.ok === true && listed.jobs?.[0]?.workflow === 'checkout-demo', JSON.stringify(listed).slice(0, 140))
 }
 finish()

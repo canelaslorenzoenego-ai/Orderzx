@@ -37,17 +37,31 @@ import {
   MAX_WORKFLOW_STEPS,
   appendKeyEvent,
   identityCaptureScript,
-  identityProbeScript,
   listVariableNames,
+  replayWorkflowSteps,
   resolveVariables,
   sanitizeWorkflowName,
   type ElementIdentity,
+  type ReplayPage,
   type Workflow,
 } from './workflows.js'
 import type { BrowserConfig } from './protocol.js'
 
 /** Who owns the pointer right now. */
 export type PointerOwner = 'agent' | 'user'
+
+/** A background workflow job: real lifecycle, cancellable, streamed to the panel. */
+export interface JobRecord {
+  id: string
+  workflow: string
+  status: 'running' | 'done' | 'failed' | 'cancelled'
+  startedAt: number
+  finishedAt: number | null
+  stepsTotal: number
+  stepsDone: number
+  fallbacks: number
+  error: string | null
+}
 
 export interface HostSession {
   id: string
@@ -107,6 +121,8 @@ export interface HostSession {
     secretTarget: boolean
     truncated: boolean
   }
+  /** Background workflow jobs, newest first by startedAt. One running at a time — one pointer, one driver. */
+  jobs: Map<string, JobRecord>
   /** Last known agent pointer, normalized — seeds the overlay cursor on open. */
   lastPointer: { x: number; y: number } | null
 }
@@ -309,6 +325,7 @@ export class BrowserHostController {
       desktopView: false,
       debug: { armed: false, supported: false, console: [], network: [], taps: new Map() },
       recording: { active: false, name: null, steps: [], secretTarget: false, truncated: false },
+      jobs: new Map(),
       lastPointer: null,
     }
     this.#sessions.set(id, session)
@@ -389,6 +406,11 @@ export class BrowserHostController {
   async stop(id: string, reason = 'requested'): Promise<ActionResult> {
     const session = this.#sessions.get(id)
     if (!session) return { ok: false, refused: 'no-session', message: `no such session: ${id}` }
+    // A closing browser takes its background jobs with it — cancel between
+    // steps, the same polite way a human cancel lands.
+    for (const [key, controller] of [...this.#jobControllers]) {
+      if (key.startsWith(`${id}:`)) controller.abort()
+    }
     await this.#teardown(session, reason)
     return { ok: true }
   }
@@ -742,57 +764,130 @@ export class BrowserHostController {
     if (missing.length > 0) {
       return { ok: false, refused: 'policy', message: `workflow ${safe} needs variable(s): ${missing.join(', ')} — pass them in vars` }
     }
-    let fallbacks = 0
-    let replayed = 0
-    for (const [index, step] of steps.entries()) {
-      const page = session.browser.activePage()
-      if (!page) return { ok: false, refused: 'no-session', message: `the page closed mid-replay at step ${index + 1}`, replayed, fallbacks, name: safe }
-      const viewport = page.viewport()
-      try {
-        switch (step.kind) {
-          case 'goto':
-            await page.goto(step.url, { waitUntil: 'domcontentloaded' })
-            break
-          case 'click': {
-            let center: { x: number; y: number } | null = null
-            if (step.identity) {
-              try {
-                center = await page.evaluateIsolated<{ x: number; y: number } | null>(identityProbeScript(step.identity))
-              } catch {
-                center = null
-              }
-            }
-            if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
-              await page.input.click(Math.round(center.x * viewport.width), Math.round(center.y * viewport.height))
-            } else {
-              fallbacks += 1
-              await page.input.click(Math.round(step.x * viewport.width), Math.round(step.y * viewport.height))
-            }
-            break
-          }
-          case 'type':
-            await page.input.typeText(step.text ?? '')
-            break
-          case 'press':
-            await page.input.pressKey(step.key)
-            break
-          case 'scroll':
-            await page.input.scroll(step.deltaX, step.deltaY)
-            break
-        }
-        replayed += 1
-        this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `replay ${index + 1}/${steps.length}: ${step.kind}`, ok: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `replay failed at step ${index + 1} (${step.kind}): ${message.slice(0, 80)}`, ok: false, refused: 'policy' })
-        return { ok: false, refused: 'policy', message: `replay failed at step ${index + 1} (${step.kind}): ${message}`, replayed, fallbacks, name: safe }
-      }
-      // Breathe between steps — a replay should look like the human recording
-      // it came from, not a macro firing at the event loop.
-      await sleep(120 + Math.round(Math.random() * 160))
+    const result = await replayWorkflowSteps(this.#replayPage(session), steps, {
+      onStep: progress => {
+        this.recordAction(id, {
+          ts: Date.now(),
+          tool: 'browser_workflow',
+          summary: progress.ok
+            ? `replay ${progress.index + 1}/${progress.total}: ${progress.step.kind}`
+            : `replay failed at step ${progress.index + 1} (${progress.step.kind}): ${(progress.detail ?? '').slice(0, 80)}`,
+          ok: progress.ok,
+          ...(progress.ok ? {} : { refused: 'policy' }),
+        })
+      },
+    })
+    if (result.failedAt !== undefined) {
+      const kind = steps[result.failedAt - 1]?.kind ?? '?'
+      return { ok: false, refused: 'policy', message: `replay failed at step ${result.failedAt} (${kind}): ${result.error ?? ''}`, replayed: result.replayed, fallbacks: result.fallbacks, name: safe }
     }
-    this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `replayed ${safe} — ${replayed}/${steps.length} steps, ${fallbacks} coordinate fallback(s)`, ok: true })
-    return { ok: true, replayed, fallbacks, name: safe }
+    this.recordAction(id, { ts: Date.now(), tool: 'browser_workflow', summary: `replayed ${safe} — ${result.replayed}/${steps.length} steps, ${result.fallbacks} coordinate fallback(s)`, ok: true })
+    return { ok: true, replayed: result.replayed, fallbacks: result.fallbacks, name: safe }
+  }
+
+  /**
+   * Adapt a session's live page(s) to the replay loop's structural surface.
+   * Resolved PER CALL inside the adapter, because a `goto` step can change
+   * which page is active mid-replay.
+   */
+  #replayPage(session: HostSession): ReplayPage {
+    const live = (): EnginePage => {
+      const page = session.browser.activePage()
+      if (!page) throw new Error('the page closed mid-replay')
+      return page
+    }
+    return {
+      viewport: () => session.browser.activePage()?.viewport() ?? { width: 0, height: 0 },
+      goto: async (url, opts) => { await live().goto(url, opts) },
+      evaluateIsolated: async script => live().evaluateIsolated(script),
+      input: {
+        click: async (x, y) => { await live().input.click(x, y) },
+        typeText: async text => { await live().input.typeText(text) },
+        pressKey: async key => { await live().input.pressKey(key) },
+        scroll: async (deltaX, deltaY) => { await live().input.scroll(deltaX, deltaY) },
+      },
+    }
+  }
+
+  // ── background jobs (browser_task) ────────────────────────────────────────
+
+  #jobControllers = new Map<string, AbortController>()
+
+  /**
+   * Start a saved workflow as a BACKGROUND job with real lifecycle.
+   *
+   * Honest scale, stated plainly: without the harness job runtime there is no
+   * LLM planner in the loop, so a "task" is a demonstrated workflow replayed
+   * while the conversation continues — cancellable, progress-streamed to the
+   * panel timeline, and refused while a human owns the pointer.
+   */
+  async startJob(id: string, workflow: string, vars: Record<string, string> = {}): Promise<ActionResult & { job?: string; steps?: number }> {
+    const session = this.#sessions.get(id)
+    if (!session) return { ok: false, refused: 'no-session', message: `no such session: ${id}` }
+    if (session.owner === 'user') {
+      return { ok: false, refused: 'pointer-owned', message: 'you own the pointer — resume the agent before starting a background job' }
+    }
+    for (const job of session.jobs.values()) {
+      if (job.status === 'running') return { ok: false, refused: 'policy', message: `job ${job.id} is already running here — one pointer, one driver at a time` }
+    }
+    const safe = sanitizeWorkflowName(workflow)
+    if (!safe) return { ok: false, refused: 'policy', message: 'invalid workflow name' }
+    let parsed: Workflow
+    try {
+      parsed = JSON.parse(await readFile(join(this.#workflowsDir(), `${safe}.json`), 'utf8')) as Workflow
+    } catch {
+      return { ok: false, refused: 'policy', message: `no such workflow: ${safe}` }
+    }
+    const { steps, missing } = resolveVariables(Array.isArray(parsed.steps) ? parsed.steps : [], vars)
+    if (missing.length > 0) {
+      return { ok: false, refused: 'policy', message: `workflow ${safe} needs variable(s): ${missing.join(', ')} — pass them in vars` }
+    }
+    const jobId = randomUUID().slice(0, 8)
+    const record: JobRecord = { id: jobId, workflow: safe, status: 'running', startedAt: Date.now(), finishedAt: null, stepsTotal: steps.length, stepsDone: 0, fallbacks: 0, error: null }
+    session.jobs.set(jobId, record)
+    const controller = new AbortController()
+    this.#jobControllers.set(`${id}:${jobId}`, controller)
+    this.recordAction(id, { ts: Date.now(), tool: 'browser_task', summary: `job ${jobId} started: ${safe} (${steps.length} steps)`, ok: true })
+    void (async () => {
+      const result = await replayWorkflowSteps(this.#replayPage(session), steps, {
+        signal: controller.signal,
+        onStep: progress => {
+          record.stepsDone = progress.index + 1
+          if (!progress.ok) record.error = progress.detail ?? 'step failed'
+          this.recordAction(id, {
+            ts: Date.now(),
+            tool: 'browser_task',
+            summary: progress.ok
+              ? `job ${jobId} step ${progress.index + 1}/${progress.total}: ${progress.step.kind}`
+              : `job ${jobId} failed at step ${progress.index + 1} (${progress.step.kind}): ${(progress.detail ?? '').slice(0, 60)}`,
+            ok: progress.ok,
+          })
+        },
+      })
+      record.fallbacks = result.fallbacks
+      record.finishedAt = Date.now()
+      record.status = result.cancelled ? 'cancelled' : result.failedAt === undefined ? 'done' : 'failed'
+      if (result.error) record.error = result.error
+      this.#jobControllers.delete(`${id}:${jobId}`)
+      this.recordAction(id, { ts: Date.now(), tool: 'browser_task', summary: `job ${jobId} ${record.status} — ${result.replayed}/${steps.length} steps, ${result.fallbacks} fallback(s)`, ok: record.status === 'done' })
+    })()
+    return { ok: true, job: jobId, steps: steps.length }
+  }
+
+  async cancelJob(id: string, jobId: string): Promise<ActionResult> {
+    const session = this.#sessions.get(id)
+    const record = session?.jobs.get(jobId)
+    if (!session || !record) return { ok: false, refused: 'policy', message: `no such job: ${jobId}` }
+    if (record.status !== 'running') return { ok: false, refused: 'policy', message: `job ${jobId} is ${record.status}, not running` }
+    this.#jobControllers.get(`${id}:${jobId}`)?.abort()
+    this.recordAction(id, { ts: Date.now(), tool: 'browser_task', summary: `job ${jobId} cancel requested`, ok: true })
+    return { ok: true }
+  }
+
+  listJobs(id: string): JobRecord[] {
+    const session = this.#sessions.get(id)
+    if (!session) return []
+    return [...session.jobs.values()].sort((a, b) => b.startedAt - a.startedAt)
   }
 
   /**
@@ -1183,6 +1278,14 @@ export class BrowserHostController {
         debugTap: session.debug.armed,
       },
       ...(session.recording.active ? { recording: { active: true, name: session.recording.name, steps: session.recording.steps.length } } : {}),
+      ...(session.jobs.size > 0
+        ? {
+            jobs: [...session.jobs.values()]
+              .sort((a, b) => b.startedAt - a.startedAt)
+              .slice(0, 8)
+              .map(job => ({ id: job.id, name: job.workflow, status: job.status, stepsDone: job.stepsDone, stepsTotal: job.stepsTotal })),
+          }
+        : {}),
       debug: {
         armed: session.debug.armed,
         supported: session.debug.supported,

@@ -1435,59 +1435,72 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
   const browserTask = defineTool({
     name: TOOL_NAMES.task,
     description:
-      'Run a bounded observe → decide → act → verify loop toward a natural-language goal, in the background, and '
-      + 'return a job handle. Step and time limits come from policy (maxTaskSteps, taskTimeoutMs). Track it with the '
-      + 'harness job tools; the panel streams it live the whole time and the user can take over the pointer at any '
-      + 'point, which pauses the loop. Prefer driving the steps yourself when the task is short — a background loop '
-      + 'is harder for the user to steer.',
+      'Run a SAVED WORKFLOW as a cancellable BACKGROUND job and get a job handle back: the steps replay with '
+      + 'humanized input while the conversation continues, progress streams to the panel timeline, and '
+      + '`action: cancel` stops it between steps. One running job per session — one pointer, one driver. '
+      + 'HONEST SCALE: a natural-language `goal` without a workflow is refused, because an autonomous goal loop '
+      + 'needs the harness job runtime (ctx.jobs) this build does not inject yet; demonstrate once with '
+      + 'browser_workflow and replay it here as many times as you like. status/list inspect jobs.',
     parameters: {
       session: sessionSchema,
-      goal: { type: 'string', required: true, description: 'What to achieve, in plain language.' },
-      startUrl: { type: 'string', description: 'Navigate here first.' },
-      maxSteps: { type: 'number', description: 'Override, capped by policy.maxTaskSteps.' },
-      runInBackground: { type: 'boolean', description: 'Default true.' },
+      action: { type: 'string', enum: ['start', 'status', 'cancel', 'list'], required: true, description: 'start = background job from a saved workflow; status/cancel/list manage jobs.' },
+      workflow: { type: 'string', description: 'start: saved workflow name (browser_workflow action:list).' },
+      vars: { type: 'object', additionalProperties: true, description: 'start: values for the workflow\'s {{variables}} — missing ones refuse the job.' },
+      job: { type: 'string', description: 'status/cancel: the job id start returned.' },
+      goal: { type: 'string', description: 'Not honored yet — see the honesty note. Pass `workflow` instead.' },
     },
     output: {
       schema: {
         type: 'object', additionalProperties: false,
         properties: {
           ok: { type: 'boolean', required: true },
-          kind: { type: 'string' },
-          jobId: { type: 'string' },
-          goal: { type: 'string' },
-          maxSteps: { type: 'number' },
+          job: { type: 'string' },
+          steps: { type: 'number' },
+          jobs: { type: 'array', items: { type: 'object', additionalProperties: true } },
+          id: { type: 'string' },
+          workflowName: { type: 'string' },
+          status: { type: 'string' },
+          stepsDone: { type: 'number' },
+          stepsTotal: { type: 'number' },
+          fallbacks: { type: 'number' },
+          error: { type: 'string' },
           refused: { type: 'string' }, message: { type: 'string' },
         },
       },
       render: renderJson,
     },
-    async execute(args, exec) {
+    async execute(args) {
       const resolved = resolveSession(host, args.session)
       if (!resolved.ok) return refusalValue(resolved) as never
-      if (typeof args.goal !== 'string' || args.goal.trim().length === 0) return { ok: false, message: 'goal is required' } as never
-      const maxSteps = Math.max(1, Math.min(host.config.policy.maxTaskSteps, args.maxSteps ?? host.config.policy.maxTaskSteps))
-
-      if (args.startUrl) {
-        const nav = await host.navigate(resolved.sessionId, args.startUrl, exec.signal)
-        if (!nav.ok) return refusalValue(nav) as never
+      const action = String(args.action)
+      if (action === 'list') {
+        return { ok: true, jobs: host.listJobs(resolved.sessionId) } as never
       }
-
-      // Background execution goes through the harness job runtime so the panel,
-      // the trajectory log and job_kill all see it. Without a jobs service we
-      // refuse rather than silently running an unbounded foreground loop.
-      const jobs = (host as unknown as { jobs?: unknown }).jobs
-      void jobs
-      const start = (exec as unknown as { agent?: { inject?: (input: unknown) => void } }).agent
-      void start
-
-      return {
-        ok: false,
-        refused: 'policy',
-        message:
-          'browser_task is not wired in this release: a background loop needs the harness `jobs` service '
-          + '(ctx.jobs.start) and this build does not inject it yet. Drive the steps yourself with browser_observe + '
-          + 'the acting tools — the panel streams live either way — or see ROADMAP.md for the job integration plan.',
-      } as never
+      if (action === 'status') {
+        const jobs = host.listJobs(resolved.sessionId)
+        const one = typeof args.job === 'string' ? jobs.find(entry => entry.id === args.job) : (jobs.find(entry => entry.status === 'running') ?? jobs[0])
+        if (!one) return { ok: false, message: 'no jobs on this session yet — start one with action:start' } as never
+        return { ok: true, id: one.id, workflowName: one.workflow, status: one.status, stepsDone: one.stepsDone, stepsTotal: one.stepsTotal, fallbacks: one.fallbacks, ...(one.error ? { error: one.error } : {}) } as never
+      }
+      if (action === 'cancel') {
+        if (typeof args.job !== 'string' || args.job.length === 0) return { ok: false, message: 'cancel needs the job id from start' } as never
+        return (await host.cancelJob(resolved.sessionId, args.job)) as never
+      }
+      if (action === 'start') {
+        if (typeof args.workflow !== 'string') {
+          if (typeof args.goal === 'string' && args.goal.trim().length > 0) {
+            return { ok: false, refused: 'policy', message: 'autonomous goal loops need the harness job runtime (ctx.jobs); until then a task is a SAVED WORKFLOW replayed in the background — record one with browser_workflow, then start it here' } as never
+          }
+          return { ok: false, message: 'start needs the saved workflow `name` (browser_workflow action:list)' } as never
+        }
+        const gate = host.gate(resolved.sessionId)
+        if (!gate.ok) return refusalValue(gate) as never
+        const vars = (args.vars && typeof args.vars === 'object' ? args.vars : {}) as Record<string, string>
+        const result = await host.startJob(resolved.sessionId, args.workflow, vars)
+        if (result.ok) acted(resolved.sessionId, TOOL_NAMES.task, `job ${result.job ?? '?'} started: ${args.workflow} (${result.steps ?? 0} steps)`)
+        return result as never
+      }
+      return { ok: false, message: 'action must be one of start/status/cancel/list' } as never
     },
   })
 

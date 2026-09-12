@@ -202,3 +202,103 @@ export function identityCaptureScript(px: number, py: number): string {
     return { identity, isSecret }
   })()`
 }
+
+// ── replay orchestrator ─────────────────────────────────────────────────────
+
+/** The structural page surface the replay loop needs — engines satisfy it as-is. */
+export interface ReplayPage {
+  viewport(): { width: number; height: number }
+  goto(url: string, opts?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' }): Promise<void>
+  evaluateIsolated<T>(script: string): Promise<T | undefined>
+  input: {
+    click(x: number, y: number): Promise<void>
+    typeText(text: string): Promise<void>
+    pressKey(key: string): Promise<void>
+    scroll(deltaX: number, deltaY: number): Promise<void>
+  }
+}
+
+export interface ReplayProgress {
+  index: number
+  total: number
+  step: WorkflowStep
+  ok: boolean
+  detail?: string
+}
+
+export interface ReplayResult {
+  replayed: number
+  fallbacks: number
+  cancelled: boolean
+  /** 1-based step number when the run stopped on an error. */
+  failedAt?: number
+  error?: string
+}
+
+/**
+ * Run resolved workflow steps against a page, humanized and cancellable.
+ *
+ * Shared by foreground `browser_workflow run` and background `browser_task`
+ * jobs so both get the same identity-first targeting, the same coordinate
+ * fallback accounting and the same abort semantics. Cancellation is checked
+ * BETWEEN steps — a step in flight always finishes, like a human lifting
+ * their finger off the mouse.
+ */
+export async function replayWorkflowSteps(
+  page: ReplayPage,
+  steps: WorkflowStep[],
+  opts: { signal?: AbortSignal; onStep?: (progress: ReplayProgress) => void; paceMs?: number } = {},
+): Promise<ReplayResult> {
+  const pace = opts.paceMs ?? 120
+  let replayed = 0
+  let fallbacks = 0
+  for (const [index, step] of steps.entries()) {
+    if (opts.signal?.aborted) return { replayed, fallbacks, cancelled: true }
+    try {
+      switch (step.kind) {
+        case 'goto':
+          await page.goto(step.url, { waitUntil: 'domcontentloaded' })
+          break
+        case 'click': {
+          let center: { x: number; y: number } | null = null
+          if (step.identity) {
+            try {
+              center = (await page.evaluateIsolated<{ x: number; y: number } | null>(identityProbeScript(step.identity))) ?? null
+            } catch {
+              center = null
+            }
+          }
+          const viewport = page.viewport()
+          if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
+            await page.input.click(Math.round(center.x * viewport.width), Math.round(center.y * viewport.height))
+          } else {
+            fallbacks += 1
+            await page.input.click(Math.round(step.x * viewport.width), Math.round(step.y * viewport.height))
+          }
+          break
+        }
+        case 'type':
+          await page.input.typeText(step.text ?? '')
+          break
+        case 'press':
+          await page.input.pressKey(step.key)
+          break
+        case 'scroll':
+          await page.input.scroll(step.deltaX, step.deltaY)
+          break
+      }
+      replayed += 1
+      opts.onStep?.({ index, total: steps.length, step, ok: true })
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      opts.onStep?.({ index, total: steps.length, step, ok: false, detail })
+      return { replayed, fallbacks, cancelled: false, failedAt: index + 1, error: detail }
+    }
+    // Breathe between steps — a replay should look like the human recording it
+    // came from, not a macro firing at the event loop. paceMs: 0 for tests.
+    if (pace > 0 && index < steps.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, pace + Math.round(Math.random() * 160)))
+    }
+  }
+  return { replayed, fallbacks, cancelled: false }
+}

@@ -62,11 +62,13 @@ the site's own tools over vision is the right call. The spec is still moving, so
 today we only DETECT and report (`browser_observe` answers `siteTools: true` when
 the page exposes `navigator.modelContext`) and keep consumption parked here.
 
-## ○ `browser_task` job integration
-The stub stays honest until the harness injects `ctx.jobs`: a background loop needs
-job lifecycle (start/cancel/status) that this build cannot fabricate. When cordis
-provides it, `browser_task` becomes observe → plan → act → verify over the job
-service, with the panel streaming either way.
+## ✓ `browser_task` job integration (local scale)
+Shipped at the honest scale: a background job is a SAVED WORKFLOW replayed with
+real lifecycle — `browser_task start/status/cancel/list`, one running job per
+session, cancel lands between steps, progress streams to the panel timeline and
+a ⚙ chip in the header. A bare natural-language goal is still refused, because
+the observe → plan → act → verify loop over an LLM planner needs the harness job
+runtime (`ctx.jobs`); when cordis injects it, the same lifecycle bridges to it.
 
 ## ✓ Act → deterministic cache
 Ui.Vision's other half, shipped at our honest scale: `browser_act` caches the

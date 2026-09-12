@@ -403,6 +403,8 @@ export interface BrowserStatus {
     /** Console+network tap armed — extra listeners on the page; a posture gap the user opted into. */
     debugTap: boolean
   }
+  /** Background workflow jobs on this session, newest first. */
+  jobs?: Array<{ id: string; name: string; status: 'running' | 'done' | 'failed' | 'cancelled'; stepsDone: number; stepsTotal: number }>
   /** Non-null while a workflow recording is armed — the panel shows a REC chip. */
   recording?: { active: boolean; name: string | null; steps: number }
   /** Opt-in console+network feed for the panel's debug drawer. Ring-capped by the host. */

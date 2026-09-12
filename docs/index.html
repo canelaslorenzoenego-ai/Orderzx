@@ -361,7 +361,7 @@
     <div class="badges">
       <span class="badge"><i>version</i><b class="b-blue">v0.2.0-rc.1</b></span>
       <span class="badge"><i>platform</i><b class="b-green">Chromium 150+ · 3 engines</b></span>
-      <span class="badge"><i>smoke tests</i><b class="b-green">559/559 ✓</b></span>
+      <span class="badge"><i>smoke tests</i><b class="b-green">570/570 ✓</b></span>
       <span class="badge"><i>backend</i><b class="b-amber">none · on-loopback</b></span>
       <span class="badge"><i>license</i><b class="b-gray">MIT</b></span>
     </div>
@@ -467,7 +467,7 @@
 <div class="stats">
   <div class="wrap stats-in">
     <div class="stat rv"><b data-count="24">0</b><span>model-facing tools</span></div>
-    <div class="stat rv"><b data-count="559">0</b><span>green checks</span></div>
+    <div class="stat rv"><b data-count="570">0</b><span>green checks</span></div>
     <div class="stat rv"><b data-count="3">0</b><span>stealth engines</span></div>
     <div class="stat rv"><b data-count="320">0</b><span>ms capsule pop</span></div>
   </div>
@@ -541,7 +541,7 @@
         <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="3.2" fill="rgba(248,81,73,.18)"/><circle cx="10" cy="10" r="7.2" stroke-opacity=".55"/><path d="M10 1.4v2M10 16.6v2" stroke-opacity=".55"/></svg>
       </div>
       <h3>Demonstrate once, replay by name</h3>
-      <p>Take over, show the flow, stop — it saves as plain-JSON <code>browser_workflow</code> steps. Replay matches elements by identity first, coordinates second, humanized always. Password-shaped fields become required <code>{{variables}}</code>: secrets never touch the disk.</p>
+      <p>Take over, show the flow, stop — it saves as plain-JSON <code>browser_workflow</code> steps. Replay matches elements by identity first, coordinates second, humanized always — in the foreground or as a cancellable background <code>browser_task</code> job with live progress. Password-shaped fields become required <code>{{variables}}</code>: secrets never touch the disk.</p>
     </div>
     <div class="card rv">
       <div class="ico" style="background:rgba(103,232,249,.08)">
@@ -699,12 +699,12 @@
 <section id="tests" class="wrap">
   <div class="sec-head rv">
     <span class="sec-tag">// verification</span>
-    <h2>559 checks, all green — against a real Chromium.</h2>
+    <h2>570 checks, all green — against a real Chromium.</h2>
     <p>Static suites prove the contracts; the live and e2e suites drive an actual browser over CDP, including the self-heal and cookie-metadata guarantees.</p>
   </div>
   <div class="tests-grid">
     <div class="rv" id="bars">
-      <div class="bar-row"><span class="lbl">tools</span><div class="bar-track"><div class="bar-fill" data-w="91" style="background:linear-gradient(90deg,#58a6ff,#67e8f9)"></div></div><span class="n">173</span></div>
+      <div class="bar-row"><span class="lbl">tools</span><div class="bar-track"><div class="bar-fill" data-w="96" style="background:linear-gradient(90deg,#58a6ff,#67e8f9)"></div></div><span class="n">184</span></div>
       <div class="bar-row"><span class="lbl">panel</span><div class="bar-track"><div class="bar-fill" data-w="100" style="background:linear-gradient(90deg,#bc8cff,#67e8f9)"></div></div><span class="n">191</span></div>
       <div class="bar-row"><span class="lbl">frames</span><div class="bar-track"><div class="bar-fill" data-w="38" style="background:linear-gradient(90deg,#58a6ff,#3fb950)"></div></div><span class="n">72</span></div>
       <div class="bar-row"><span class="lbl">routes</span><div class="bar-track"><div class="bar-fill" data-w="38" style="background:linear-gradient(90deg,#3fb950,#67e8f9)"></div></div><span class="n">73</span></div>
@@ -713,7 +713,7 @@
       <div class="bar-row"><span class="lbl">e2e</span><div class="bar-track"><div class="bar-fill" data-w="8" style="background:linear-gradient(90deg,#d29922,#3fb950)"></div></div><span class="n">15</span></div>
     </div>
     <div class="tests-note rv">
-      <span class="big" data-count="559">0</span>
+      <span class="big" data-count="570">0</span>
       <b>Green, end to end.</b> The live suite reloads the fixture to kill every ref and asserts the next click heals once and still lands; it plants an <b>HttpOnly</b> cookie and asserts the value never reaches a tool result. A suite that can't fail is a suite that proves nothing — these can.
     </div>
   </div>

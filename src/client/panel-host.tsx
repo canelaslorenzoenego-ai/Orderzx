@@ -572,6 +572,12 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
             <div style={headerSubStyles}>
               {bootLabel(boot)}{status?.session?.desktopView ? ' · desktop view' : ''}
               {status?.recording?.active ? <span style={recChipStyles} title={`recording workflow “${status.recording.name ?? ''}” — gestures are being captured as replayable steps`}>● REC {status.recording.steps}</span> : null}
+              {(status?.jobs ?? []).some(job => job.status === 'running')
+                ? (() => {
+                    const running = (status?.jobs ?? []).find(job => job.status === 'running')!
+                    return <span style={jobChipStyles} title={`background job ${running.id} replaying workflow “${running.name}”`}>⚙ {running.name} {running.stepsDone}/{running.stepsTotal}</span>
+                  })()
+                : null}
             </div>
           </div>
           <select
@@ -942,6 +948,12 @@ function primaryButtonStyles(color: string): CSSProperties {
     background: `${color}22`,
     color,
   }
+}
+
+const jobChipStyles: CSSProperties = {
+  color: '#67e8f9',
+  fontWeight: 600,
+  letterSpacing: '0.04em',
 }
 
 const recChipStyles: CSSProperties = {

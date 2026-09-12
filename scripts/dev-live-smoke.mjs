@@ -60,7 +60,13 @@ const fixture = http.createServer((req, res) => {
     res.end(JSON.stringify({ ok: true, count: clicked.count }))
     return
   }
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+  // Two cookies ride along on every page load: one plain, one HttpOnly — the
+  // live cookie test asserts the flags survive into metadata and the VALUES
+  // never do.
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Set-Cookie': ['livesmoke=present; Path=/', 'hsess=sekrit; Path=/; HttpOnly'],
+  })
   res.end(`<!doctype html><html><head><title>Live Smoke Fixture</title></head><body>
 <h1>dsh-browser live fixture</h1>
 <a id="target" href="#" role="button">Click me</a>
@@ -177,6 +183,30 @@ try {
     step('click by ref triggers a real DOM click', clicked.count > before && clickResult?.ok === true, `clicks ${before} → ${clicked.count}, ok=${clickResult?.ok}`)
   } else {
     step('click by ref triggers a real DOM click', false, 'no "Click me" node found in the elements')
+  }
+
+  // 3b. browser_cookies against the real profile
+  const cookieList = await runTool('browser_cookies', { session: sessionId })
+  step('browser_cookies lists the fixture cookies as metadata', cookieList?.ok === true && (cookieList.cookies ?? []).some(c => c.name === 'livesmoke') && (cookieList.cookies ?? []).every(c => !('value' in c)), JSON.stringify(cookieList?.cookies ?? []).slice(0, 200))
+  step('cookie flags survive into metadata (httpOnly)', (cookieList?.cookies ?? []).find(c => c.name === 'hsess')?.httpOnly === true, JSON.stringify((cookieList?.cookies ?? []).find(c => c.name === 'hsess') ?? null))
+  const cookieClear = await runTool('browser_cookies', { session: sessionId, action: 'clear', domain: '127.0.0.1' })
+  step('clearing the fixture domain reports the removed count', cookieClear?.ok === true && (cookieClear.cleared ?? 0) >= 2, JSON.stringify(cookieClear).slice(0, 140))
+  const cookiesAfter = await runTool('browser_cookies', { session: sessionId })
+  step('the domain is empty after clearing', cookiesAfter?.ok === true && (cookiesAfter.cookies ?? []).length === 0, JSON.stringify(cookiesAfter?.cookies ?? []).slice(0, 120))
+
+  // 3c. self-healing refs: a reload kills every ref in the engine's map. The
+  //     click must heal exactly once (same role + accessible name in the fresh
+  //     tree) and STILL land on the real element.
+  const preHeal = await runTool('browser_observe', { session: sessionId })
+  const healTarget = (preHeal?.elements ?? []).find(node => /click me/i.test(node.name ?? ''))
+  if (healTarget) {
+    const beforeHeal = clicked.count
+    await runTool('browser_navigate', { session: sessionId, action: 'reload' })
+    const healedClick = await runTool('browser_click', { session: sessionId, ref: healTarget.ref })
+    await new Promise(resolve => setTimeout(resolve, 600))
+    step('a ref killed by a reload self-heals and still clicks', healedClick?.ok === true && healedClick?.healedFrom === healTarget.ref && clicked.count > beforeHeal, `healedFrom=${healedClick?.healedFrom} clicks ${beforeHeal} → ${clicked.count}`)
+  } else {
+    step('a ref killed by a reload self-heals and still clicks', false, 'no "Click me" node to heal')
   }
 
   // 4. signed routes over real HTTP

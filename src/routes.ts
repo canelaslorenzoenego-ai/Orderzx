@@ -310,6 +310,11 @@ export class Routes implements RouteHandlers {
         const result = this.host.switchActive(body.id)
         return this.#json(res, result.ok ? 200 : 404, result)
       }
+      case 'stop-browser': {
+        if (payload.scope !== 'drive') return this.#fail(res, 403, 'drive scope required')
+        const result = await this.host.stop(body.id, 'closed from panel')
+        return this.#json(res, result.ok ? 200 : 409, result)
+      }
       case 'set-desktop-view': {
         if (payload.scope !== 'drive') return this.#fail(res, 403, 'drive scope required')
         const result = await this.host.setDesktopView(payload.session, body.enabled === true, { reload: body.reload !== false })

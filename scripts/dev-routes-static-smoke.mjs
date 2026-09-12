@@ -77,6 +77,7 @@ const host = {
   switchActive: record('switchActive', () => ({ ok: true, active: SESSION })),
   setDesktopView: record('setDesktopView', () => ({ ok: true })),
   start: record('start', () => ({ ok: true, session: SESSION, label: null, phase: 'streaming', posture: { provider: 'patchright', humanize: true, applied: [], gaps: [] } })),
+  stop: record('stop', () => ({ ok: true })),
   interactionsSince: () => ({ records: state.interactions, resync: false, latest: state.interactions.length }),
   subscribeInteractions: () => () => {},
 }
@@ -372,6 +373,14 @@ state.takeover = false
     method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'switch-session', id: SESSION }),
   })
   step('switch-session with drive scope succeeds', switched.status === 200, `got ${switched.status}`)
+
+  // stop-browser: closing a tab from the panel
+  const stopped = await fetch(`${base}${protocol.SESSION_ROUTE_PATH}?token=${drive.control.token}`, {
+    method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'stop-browser', id: SESSION }),
+  })
+  step('stop-browser with drive scope succeeds', stopped.status === 200, `got ${stopped.status}`)
+  const stopCall = state.calls.filter(c => c.name === 'stop').pop()
+  step('stop-browser forwards the id + a panel reason to the host', stopCall?.args?.[0] === SESSION && /panel/.test(String(stopCall?.args?.[1] ?? '')), JSON.stringify(stopCall?.args))
 
   // start-browser while a session exists
   const started = await fetch(`${base}${protocol.SESSION_ROUTE_PATH}?token=${drive.control.token}`, {

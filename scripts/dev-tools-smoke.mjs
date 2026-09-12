@@ -601,4 +601,103 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   step('selecting a tab re-syncs it too', host.calls.filter(c => c.name === 'syncDesktopView').length >= 2)
 }
 
+  {
+  // browser_cookies: metadata-only surface, explicit-domain clears.
+  const cookieMeta = [
+    { name: 'sid', domain: 'example.com', path: '/', expires: -1, httpOnly: true, secure: true },
+    { name: '_ga', domain: '.example.com', path: '/', expires: 1799999999, httpOnly: false, secure: false },
+  ]
+  const { tools, host } = build()
+  host.listCookies = async (id, domain) => {
+    host.calls.push({ name: 'listCookies', args: [id, domain] })
+    return { ok: true, cookies: domain ? cookieMeta.filter(c => c.domain.includes(domain)) : cookieMeta }
+  }
+  host.clearCookies = async (id, domain) => {
+    host.calls.push({ name: 'clearCookies', args: [id, domain] })
+    return { ok: true, cleared: domain === 'example.com' ? 2 : 0 }
+  }
+  const list = await run(tools, TOOL_NAMES.cookies, {})
+  step('cookies list returns metadata and no values', list.ok === true && list.count === 2 && list.cookies.every(c => typeof c.name === 'string' && !('value' in c)), JSON.stringify(list).slice(0, 150))
+  await run(tools, TOOL_NAMES.cookies, { domain: 'example.com' })
+  step('the domain filter is forwarded to the host', host.calls.filter(c => c.name === 'listCookies').pop()?.args?.[1] === 'example.com')
+  const clearNoDomain = await run(tools, TOOL_NAMES.cookies, { action: 'clear' })
+  step('clear without a domain is refused — no wipe-everything mode', clearNoDomain.ok === false && /explicit `domain`/.test(clearNoDomain.message ?? ''), JSON.stringify(clearNoDomain).slice(0, 150))
+  step('the refused clear never reached the host', !host.calls.some(c => c.name === 'clearCookies'))
+  const cleared = await run(tools, TOOL_NAMES.cookies, { action: 'clear', domain: 'example.com' })
+  step('clear reports how many cookies went', cleared.ok === true && cleared.cleared === 2, JSON.stringify(cleared))
+  step('clear leaves a timeline trace', host.history.some(h => h.entry.tool === TOOL_NAMES.cookies && /example\.com/.test(h.entry.summary)), JSON.stringify(host.history.map(h => h.entry.tool)))
+}
+
+{
+  const { tools } = build({}, { noSession: true })
+  const res = await run(tools, TOOL_NAMES.cookies, {})
+  step('cookies without a session is a typed refusal', res.ok === false && res.refused === 'no-session', JSON.stringify(res).slice(0, 120))
+}
+
+{
+  // Self-healing refs: a re-rendered tree must not cost a full observe round-trip
+  // when the element's identity (role + accessible name) survives — uniquely.
+  const nodes = [
+    { ref: 'e1', role: 'heading', name: 'Example', children: [] },
+    { ref: 'e12', role: 'link', name: 'More information', children: [] },
+  ]
+  const { tools, host } = build({}, { pageOptions: { nodes } })
+  await run(tools, TOOL_NAMES.observe, {})
+  // The page re-renders: e12 is dead; e13 is the same link.
+  nodes.length = 0
+  nodes.push(
+    { ref: 'e1', role: 'heading', name: 'Example', children: [] },
+    { ref: 'e13', role: 'link', name: 'More information', children: [] },
+  )
+  host.page.boxOf = async ref => {
+    if (ref === 'e12') throw Object.assign(new Error("stale element ref 'e12'"), { code: 'E_STALE_REF' })
+    return { x: 100, y: 200, width: 80, height: 24, ref }
+  }
+  const healed = await run(tools, TOOL_NAMES.click, { ref: 'e12' })
+  step('a dead ref self-heals to the unique role+name match', healed.ok === true && healed.healedFrom === 'e12' && healed.target === 'e13', JSON.stringify(healed).slice(0, 200))
+  step('the heal is announced on the timeline, never silent', host.gestures.some(g => g.event?.type === 'note' && /self-healed/.test(g.event?.text ?? '')), JSON.stringify(host.gestures.map(g => g.event?.type)))
+}
+
+{
+  // Two candidates with the same role+name: guessing between "Delete" and
+  // "Cancel" is how bots destroy accounts. No heal, loud failure.
+  const nodes = [
+    { ref: 'e1', role: 'heading', name: 'Example', children: [] },
+    { ref: 'e12', role: 'link', name: 'More information', children: [] },
+  ]
+  const { tools, host } = build({}, { pageOptions: { nodes } })
+  await run(tools, TOOL_NAMES.observe, {})
+  nodes.length = 0
+  nodes.push(
+    { ref: 'e1', role: 'heading', name: 'Example', children: [] },
+    { ref: 'e13', role: 'link', name: 'More information', children: [] },
+    { ref: 'e14', role: 'link', name: 'More information', children: [] },
+  )
+  const boxCalls = []
+  host.page.boxOf = async ref => {
+    boxCalls.push(ref)
+    if (ref === 'e12') throw Object.assign(new Error("stale element ref 'e12'"), { code: 'E_STALE_REF' })
+    return { x: 100, y: 200, width: 80, height: 24, ref }
+  }
+  const res = await run(tools, TOOL_NAMES.click, { ref: 'e12' })
+  step('an ambiguous re-match is never guessed', res.ok === false && !boxCalls.includes('e13') && !boxCalls.includes('e14'), `${JSON.stringify(res).slice(0, 120)} boxCalls=${boxCalls.join(',')}`)
+}
+
+{
+  // The type tool heals the same way, and continues typing into the fresh ref.
+  const nodes = [
+    { ref: 'e9', role: 'textbox', name: 'Search', children: [] },
+  ]
+  const { tools, host } = build({}, { pageOptions: { nodes } })
+  await run(tools, TOOL_NAMES.observe, {})
+  nodes.length = 0
+  nodes.push({ ref: 'e21', role: 'textbox', name: 'Search', children: [] })
+  host.page.boxOf = async ref => {
+    if (ref === 'e9') throw Object.assign(new Error("stale element ref 'e9'"), { code: 'E_STALE_REF' })
+    return { x: 10, y: 20, width: 120, height: 24, ref }
+  }
+  const res = await run(tools, TOOL_NAMES.type, { ref: 'e9', text: 'hello' })
+  step('type self-heals a dead field ref too', res.ok === true && host.gestures.some(g => g.event?.type === 'note' && /self-healed ref e9/.test(g.event?.text ?? '')), JSON.stringify(res).slice(0, 160))
+}
+
 finish()

@@ -41,13 +41,24 @@ you:  "book me a table at X"
 
 ## What it is
 
-- **21 model-facing tools** — `browser_start/stop/status`, `browser_observe`,
+- **22 model-facing tools** — `browser_start/stop/status`, `browser_observe`,
   **`browser_see`** (set-of-marks screenshots — the model's eyes),
   **`browser_desktop_view`** (Chrome-for-Android "Request desktop site", for the
   agent too), `browser_act` (deterministic natural-language actions with a
   confidence gate), `browser_click/type/press/scroll/navigate/tabs/fill_form/extract/wait`,
   `browser_evaluate` (config-gated), `browser_challenge`, `browser_handoff`,
-  `browser_takeover`, `browser_task` (stubbed pending `ctx.jobs`).
+  **`browser_cookies`**, `browser_takeover`, `browser_task` (stubbed pending `ctx.jobs`).
+- **Self-healing refs** — when a page re-renders and a ref dies mid-task,
+  `browser_click`/`browser_type` re-snapshot once and look for the element's
+  identity (role + accessible name) in the fresh tree. Exactly one match → the
+  action continues on the new ref and the result says `healedFrom`; zero or
+  several → it fails loudly with "observe again" instead of guessing between
+  "Delete" and "Cancel". Every heal is announced on the timeline, never silent.
+- **Cookies without the credential leak** — `browser_cookies` lists cookie
+  **metadata** (name, domain, flags, expiry) so the model can check whether a
+  login persisted or which trackers a site planted; values are stripped at the
+  engine boundary and can never reach a transcript. Clearing requires an
+  explicit domain — there is no wipe-everything mode.
 - **Eyes the model can point at** — `browser_see` returns the screenshot with
   every interactive element **numbered on it** (set-of-marks, the technique
   behind vision-first agents) plus a `mark → ref → box` table. `browser_click`
@@ -57,8 +68,10 @@ you:  "book me a table at X"
   visibility-filtered element list.
 - **Sub-agent browsers** — label a session at launch
   (`browser_start({ label: "researcher" })`); every tool's `session` param
-  accepts the label. One custom tab per browser in the panel, independent
-  pointer ownership each, parallel by design.
+  accepts the label. One custom tab per browser in the panel — origin-avatar,
+  live-phase pulse, desktop-view badge, and an × that closes just that browser
+  (`stop-browser`, drive scope) — independent pointer ownership each, parallel
+  by design.
 - **See the model's hands** — a gesture channel (SSE) animates the agent's
   pointer path, click ripples, target outlines, scroll arrows, swipes and
   keystroke counts over the live frames. When `browser_see` runs, the numbered

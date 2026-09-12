@@ -42,6 +42,7 @@ import {
   marksTableText,
   resolveMark,
   clearMarks,
+  resolveRefBox,
   refSchema,
   refusalValue,
   resolveSession,
@@ -394,6 +395,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           url: { type: 'string' },
           title: { type: 'string' },
           target: { type: 'string' },
+          healedFrom: { type: 'string', description: 'Present when the given ref was dead and self-healed to this one (same role + accessible name, unique match).' },
           point: { type: 'object', additionalProperties: false, properties: { x: { type: 'number' }, y: { type: 'number' } } },
           navigated: { type: 'boolean' },
           challenge: challengeSchema,
@@ -448,12 +450,20 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       let label: string
 
       let refBox: { x: number; y: number; width: number; height: number } | undefined
+      let healedFrom: string | undefined
       if (hasRef) {
-        const box = await page.boxOf(args.ref!)
-        if (!box) return { ok: false, message: `ref ${args.ref} has no box on screen — it may be scrolled out of view or hidden; scroll or observe again` } as never
-        refBox = box
-        point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-        label = args.ref!
+        const resolved = await resolveRefBox(page, sessionId, args.ref!)
+        if (!resolved.box) return { ok: false, message: `ref ${args.ref} has no box on screen — it may be scrolled out of view or hidden; scroll or observe again` } as never
+        if (resolved.healedFrom) {
+          // Self-healed: same role + same accessible name, one exact match in a
+          // fresh snapshot. Say so in the result and the timeline — a silent
+          // substitution would be indistinguishable from a bug.
+          healedFrom = resolved.healedFrom
+          host.record(sessionId, 'agent', { type: 'note', text: `self-healed ref ${resolved.healedFrom} → ${resolved.ref}` })
+        }
+        refBox = resolved.box
+        point = { x: resolved.box.x + resolved.box.width / 2, y: resolved.box.y + resolved.box.height / 2 }
+        label = resolved.ref
       } else {
         const viewport = page.viewport()
         point = { x: args.x! * viewport.width, y: args.y! * viewport.height }
@@ -497,6 +507,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         ok: true,
         url: page.url(),
         target: label,
+        ...(healedFrom === undefined ? {} : { healedFrom }),
         point: { x: Math.round(point.x), y: Math.round(point.y) },
         navigated: beforeUrl !== page.url(),
         challenge,
@@ -561,7 +572,12 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
 
       let isSecret = false
       if (args.ref) {
-        const box = await page.boxOf(args.ref)
+        const resolved = await resolveRefBox(page, sessionId, args.ref)
+        if (resolved.healedFrom) {
+          host.record(sessionId, 'agent', { type: 'note', text: `self-healed ref ${resolved.healedFrom} → ${resolved.ref}` })
+          ;(args as { ref?: string }).ref = resolved.ref
+        }
+        const box = resolved.box
         if (!box) return { ok: false, message: `stale or invisible ref ${args.ref}; observe again` } as never
         host.record(sessionId, 'agent', { type: 'focus', ref: args.ref, box: { x: box.x, y: box.y, width: box.width, height: box.height } })
         // Click to focus (humanized) before typing — a real user clicks the field.
@@ -1421,6 +1437,66 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     },
   })
 
+  const browserCookies = defineTool({
+    name: TOOL_NAMES.cookies,
+    description:
+      'Read or clear browser cookies for the session profile — METADATA only (name, domain, flags, expiry). '
+      + 'Cookie VALUES never leave the browser: they are credentials, and surfacing them in a conversation would '
+      + 'turn the transcript into a credential dump. Use it to check whether a login persisted, which trackers a '
+      + 'site planted, or to reset one domain. `clear` requires an explicit `domain` — there is no wipe-everything '
+      + 'mode (that would be a profile-wide logout).',
+    parameters: {
+      session: sessionSchema,
+      action: { type: 'string', enum: ['list', 'clear'], description: 'list (default) or clear.' },
+      domain: { type: 'string', description: 'Domain filter (suffix match). REQUIRED for `clear`.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          cookies: {
+            type: 'array',
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                name: { type: 'string', required: true },
+                domain: { type: 'string', required: true },
+                path: { type: 'string' },
+                expires: { type: 'number', description: 'Unix seconds; -1 for session cookies.' },
+                httpOnly: { type: 'boolean' },
+                secure: { type: 'boolean' },
+              },
+            },
+          },
+          count: { type: 'number' },
+          cleared: { type: 'number' },
+          refused: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      const resolved = resolveSession(host, args.session)
+      if (!resolved.ok) return refusalValue(resolved) as never
+      const action = (args.action ?? 'list') as string
+      if (action === 'clear') {
+        const domain = String(args.domain ?? '').trim()
+        if (domain.length === 0) {
+          return { ok: false, message: 'clear requires an explicit `domain` — there is no wipe-everything mode (that would be a profile-wide logout)' } as never
+        }
+        const result = await host.clearCookies(resolved.sessionId, domain)
+        if (!result.ok) return refusalValue(result) as never
+        acted(resolved.sessionId, TOOL_NAMES.cookies, `cookies cleared on ${domain}`)
+        return { ok: true, cleared: result.cleared } as never
+      }
+      const result = await host.listCookies(resolved.sessionId, args.domain === undefined ? undefined : String(args.domain))
+      if (!result.ok) return refusalValue(result) as never
+      return { ok: true, cookies: result.cookies, count: result.cookies.length } as never
+    },
+  })
+
   // Keyed by WIRE NAME, not by local variable: consumers (the host entry's
   // effect labels, the smoke suites, third-party composition) all think in
   // `browser_click`, never `browserClick`.
@@ -1428,6 +1504,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     browserStart, browserStop, browserStatus, browserObserve, browserSee, browserClick, browserType, browserPress,
     browserScroll, browserNavigate, browserTabs, browserFillForm, browserExtract, browserWait,
     browserEvaluate, browserChallenge, browserHandoff, browserTakeover, browserTask, browserAct, browserDesktopView,
+    browserCookies,
   ]
   return Object.fromEntries(all.map(tool => [tool.name, tool]))
 }

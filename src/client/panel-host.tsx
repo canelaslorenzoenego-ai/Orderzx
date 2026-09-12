@@ -536,6 +536,11 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
           sessions={status?.sessions ?? []}
           selected={showingHome ? 'home' : (effectiveSession ?? 'home')}
           onSelect={onTabSelect}
+          onClose={sessionId => {
+            // Close the WHOLE browser for that session's tab: the strip's tabs
+            // are sessions, not pages. Index 0 of its own page list.
+            void sendSession(fetcher, controlToken, { kind: 'stop-browser', id: sessionId }).catch(() => undefined)
+          }}
           narrow={narrow}
         />
 

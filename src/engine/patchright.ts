@@ -235,6 +235,21 @@ export const patchrightProvider: EngineProviderAdapter = {
         await page.raw.bringToFront()
         activeId = id
       },
+      cookies: async () => {
+        // Metadata only, at the engine boundary: values are credentials and
+        // must never reach a tool result, a card, or a transcript.
+        const all = (await context.cookies()) as Array<{ name: string; domain: string; path: string; expires: number; httpOnly: boolean; secure: boolean }>
+        return all.map(({ name, domain, path, expires, httpOnly, secure }) => ({ name, domain, path, expires, httpOnly, secure }))
+      },
+      clearCookies: async (domain?: string) => {
+        const all = (await context.cookies()) as Array<{ name: string; domain: string; path: string }>
+        const targets = domain
+          ? all.filter(c => c.domain === domain || c.domain === `.${domain}` || c.domain.endsWith(`.${domain}`))
+          : all
+        if (targets.length === 0) return 0
+        await context.clearCookies(targets.map(c => ({ name: c.name, domain: c.domain, path: c.path })))
+        return targets.length
+      },
       posture: () => buildPosture(driver, opts, preset),
       async close() {
         for (const page of pages.values()) page.disposeScreencast()

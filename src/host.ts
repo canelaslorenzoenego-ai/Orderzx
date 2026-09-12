@@ -26,7 +26,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { ActionEntry, BrowserFrame, BootPhase, BrowserStatus, ChallengeRecord, ControlMessage, FrameSource, SessionMessage, SessionSummary } from './protocol.js'
+import type { ActionEntry, BrowserFrame, BootPhase, BrowserStatus, ChallengeRecord, ControlMessage, CookieMeta, FrameSource, SessionMessage, SessionSummary } from './protocol.js'
 import { InteractionTrace, type InteractionActor, type InteractionEvent, type InteractionRecord } from './interactions.js'
 import { DEFAULT_CONFIG } from './protocol.js'
 import { AccessController, nextCapturePath, profileRoot } from './access.js'
@@ -315,6 +315,37 @@ export class BrowserHostController {
       if (!taken.has(candidate)) return candidate
     }
     return `${base} (${Date.now().toString(36)})`
+  }
+
+  /**
+   * Cookie METADATA for a session's profile — values are stripped at the
+   * engine boundary and cannot reach a tool result. Providers that cannot
+   * enumerate (no context handle) get a policy refusal.
+   */
+  async listCookies(id: string, domain?: string): Promise<{ ok: true; cookies: CookieMeta[] } | Refusal> {
+    const session = this.#sessions.get(id)
+    if (!session) return { ok: false, refused: 'no-session', message: `no such session: ${id}` }
+    if (!session.browser.cookies) return { ok: false, refused: 'policy', message: `provider ${session.browser.posture().provider} cannot enumerate cookies` }
+    let all = await session.browser.cookies()
+    if (domain && domain.trim().length > 0) {
+      const d = domain.trim()
+      all = all.filter(c => c.domain === d || c.domain === `.${d}` || c.domain.endsWith(`.${d}`))
+    }
+    return { ok: true, cookies: all.slice(0, 300) }
+  }
+
+  /**
+   * Clear cookies for one domain. The tool layer enforces an explicit domain:
+   * a wipe-everything mode would be a profile-wide logout the model could fire
+   * mid-task by mistake, and `browser_close` already covers teardown.
+   */
+  async clearCookies(id: string, domain: string): Promise<{ ok: true; cleared: number } | Refusal> {
+    const session = this.#sessions.get(id)
+    if (!session) return { ok: false, refused: 'no-session', message: `no such session: ${id}` }
+    if (!session.browser.clearCookies) return { ok: false, refused: 'policy', message: `provider ${session.browser.posture().provider} cannot clear cookies` }
+    const cleared = await session.browser.clearCookies(domain.trim())
+    if (cleared > 0) this.record(id, 'agent', { type: 'note', text: `cleared ${cleared} cookie(s) for ${domain.trim()}` })
+    return { ok: true, cleared }
   }
 
   /** Close a session. Intentional — the idle reaper will not fight it. */

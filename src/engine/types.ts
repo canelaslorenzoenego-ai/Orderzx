@@ -138,6 +138,13 @@ export interface EngineBrowser {
   activePage(): EnginePage | undefined
   newPage(): Promise<EnginePage>
   selectPage(id: string): Promise<void>
+  /**
+   * Cookie METADATA for the session's context (values never leave the engine).
+   * Absent on providers that cannot enumerate them; the host reports that.
+   */
+  cookies?(): Promise<Array<{ name: string; domain: string; path: string; expires: number; httpOnly: boolean; secure: boolean }>>
+  /** Clear cookies, optionally restricted to one domain (suffix match). Returns how many were removed. */
+  clearCookies?(domain?: string): Promise<number>
   /** Stealth posture actually achieved — surfaced in `browser_status` and the panel. */
   posture(): EnginePosture
   close(): Promise<void>

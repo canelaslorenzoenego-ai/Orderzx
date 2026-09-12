@@ -409,6 +409,23 @@ const el = React.createElement
   step('monitor glyph is inline SVG', glyphHtml.startsWith('<svg') && !glyphHtml.includes('xlink:href'), glyphHtml.slice(0, 100))
   step('glyph has no network references', !/https?:\/\//.test(glyphHtml))
 
+  // v2: every boot step gets its own on-screen ceremony, not one generic pulse.
+  for (const [stepName, keyframe] of Object.entries({
+    'spinning-up': 'dsh-browser-scan',
+    warming: 'dsh-browser-pips',
+    hardening: 'dsh-browser-draw',
+    connecting: 'dsh-browser-bars',
+  })) {
+    const h = renderToString(el(MonitorGlyph, { step: stepName, tone: 'busy' }))
+    step(`glyph "${stepName}" runs its ${keyframe} ceremony`, h.includes(keyframe), h.slice(0, 90))
+  }
+  const liveGlyph = renderToString(el(MonitorGlyph, { step: 'connecting', tone: 'live' }))
+  step('the live glyph draws an EKG trace', liveGlyph.includes('<polyline') && liveGlyph.includes('dsh-browser-ekg'), liveGlyph.slice(0, 90))
+  step('the power LED blinks while busy', glyphHtml.includes('dsh-browser-blink'))
+  step('the power LED goes solid once frames arrive', !liveGlyph.includes('dsh-browser-blink'))
+  const errGlyph = renderToString(el(MonitorGlyph, { step: 'warming', tone: 'error' }))
+  step('the error glyph is a static X (nothing to animate)', errGlyph.includes('M7.6 4.6l4.8 4.8') && !errGlyph.includes('dsh-browser-pips'))
+
   // Panel store semantics.
   const store = createPanelStore()
   step('store starts closed', store.isOpen() === false && store.getSnapshot() === undefined)
@@ -504,6 +521,21 @@ const el = React.createElement
   const narrowHtml = renderToString(el(SessionTabStrip, { sessions, selected: 'home', onSelect() {}, narrow: true }))
   step('narrow layout grows the tab hit targets', narrowHtml.includes('min-height:38px'), narrowHtml.slice(0, 80))
 
+  // v2: origin avatars, close affordance, desktop-view badge.
+  const { originAvatar } = client
+  const av1 = originAvatar('https://example.com/a')
+  const av2 = originAvatar('https://example.com/b?c=1')
+  step('originAvatar is deterministic per host and needs no favicon fetch', av1.hue === av2.hue && av1.initial === 'E' && av1.hue >= 0 && av1.hue < 360, JSON.stringify(av1))
+  step('a desktop-view session is badged with the monitor icon', html.includes('aria-label="desktop view"'))
+  step('without an onClose handler no close buttons render (view-only strips stay clean)', !html.includes('aria-label="close'))
+
+  // onClose is wired end-to-end at runtime; SSR proves the affordance + prop.
+  let closedId = null
+  const closeHtml = renderToString(el(SessionTabStrip, { sessions, selected: 'home', onSelect() {}, onClose: id => { closedId = id } }))
+  step('every tab carries a close affordance once onClose is wired', closeHtml.includes('aria-label="close researcher"') && closeHtml.includes('aria-label="close bbbb2222"'), closeHtml.slice(0, 120))
+  step('the close affordance is a role=button inside a role=tab (valid HTML)', closeHtml.includes('role="tab"') && closeHtml.includes('role="button"'))
+  step('rendering alone fires no close', closedId === null)
+
   const closedDrawer = renderToString(el(TimelineDrawer, { entries: [], open: false, onToggle() {} }))
   step('the timeline drawer renders its toggle closed', closedDrawer.includes('timeline') && !closedDrawer.includes('no actions yet'))
   const openDrawer = renderToString(el(TimelineDrawer, {
@@ -544,6 +576,9 @@ const el = React.createElement
 {
   const { CAPSULE_KEYFRAMES, capsuleStyles, overlaySurfaceStyles } = client
   step('the capsule pop-in keyframes ship with the bundle', CAPSULE_KEYFRAMES.includes('dsh-browser-pop'))
+  for (const kf of ['dsh-browser-blink', 'dsh-browser-pips', 'dsh-browser-draw', 'dsh-browser-bars', 'dsh-browser-ekg']) {
+    step(`the ${kf} keyframes ship with the bundle`, CAPSULE_KEYFRAMES.includes(`@keyframes ${kf}`))
+  }
   const styles = capsuleStyles('busy')
   step('the capsule pops in on mount', String(styles.animation).includes('dsh-browser-pop'), String(styles.animation))
   step('the attention tone layers the pulse after the pop', String(capsuleStyles('attention').animation).includes('dsh-browser-pop') && String(capsuleStyles('attention').animation).includes('attention'))

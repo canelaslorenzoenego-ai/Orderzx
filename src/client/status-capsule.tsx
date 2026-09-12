@@ -61,6 +61,29 @@ export const CAPSULE_KEYFRAMES = `
   58%  { transform: scale(1.07) translateY(-1px); opacity: 1; }
   100% { transform: scale(1) translateY(0); opacity: 1; }
 }
+@keyframes dsh-browser-blink {
+  0%, 49%  { opacity: 1; }
+  50%,100% { opacity: 0; }
+}
+@keyframes dsh-browser-pips {
+  0%, 20%  { opacity: 0.15; }
+  30%, 55% { opacity: 1; }
+  70%,100% { opacity: 0.15; }
+}
+@keyframes dsh-browser-draw {
+  0%   { stroke-dashoffset: 14; opacity: 0.2; }
+  45%  { stroke-dashoffset: 0;  opacity: 1; }
+  80%  { stroke-dashoffset: 0;  opacity: 1; }
+  100% { stroke-dashoffset: 0;  opacity: 0.2; }
+}
+@keyframes dsh-browser-bars {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
+}
+@keyframes dsh-browser-ekg {
+  0%   { stroke-dashoffset: 32; }
+  100% { stroke-dashoffset: 0; }
+}
 `
 
 let styleInstalled = false
@@ -88,18 +111,79 @@ export function installCapsuleKeyframes(doc: Document): void {
 export function MonitorGlyph({ step, tone }: { step: BootState['step']; tone: 'busy' | 'live' | 'attention' | 'error' }): ReactNode {
   const duration = step === 'spinning-up' ? '1.5s' : step === 'warming' ? '1.1s' : step === 'hardening' ? '0.8s' : '0.55s'
   const screen = tone === 'live' ? '#3fb950' : tone === 'attention' ? '#d29922' : tone === 'error' ? '#f85149' : '#58a6ff'
+  // The screen is not a coloured rectangle: each boot step paints its own
+  // little ceremony inside the tube — cursor, loading pips, shield draw-on,
+  // signal bars — and a live monitor runs an EKG trace instead of a scanline.
+  // Same 20×17 footprint as v1 so every layout that fits the old glyph fits
+  // this one.
   return (
     <svg width="20" height="17" viewBox="0 0 20 17" fill="none" aria-hidden="true" style={{ flex: '0 0 auto', display: 'block' }}>
       {/* shell */}
       <rect x="0.6" y="0.6" width="18.8" height="12.6" rx="2.2" stroke="currentColor" strokeWidth="1.1" opacity="0.72" />
       {/* screen */}
-      <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" fill={screen} opacity={tone === 'busy' ? 0.2 : 0.3} />
-      {/* scanline — hidden once frames are actually arriving */}
-      {tone === 'busy' ? (
-        <g clipPath="url(#dsh-browser-screen-clip)">
-          <rect x="2.2" y="2.2" width="15.6" height="2.1" fill={screen} opacity="0.85" style={{ animation: `dsh-browser-scan ${duration} linear infinite` }} />
-        </g>
-      ) : null}
+      <rect x="2.2" y="2.2" width="15.6" height="9.4" rx="1.2" fill={screen} opacity={tone === 'busy' ? 0.16 : 0.26} />
+      <g clipPath="url(#dsh-browser-screen-clip)">
+        {tone === 'busy' && step === 'spinning-up' ? (
+          <>
+            <rect x="2.2" y="2.2" width="15.6" height="2.1" fill={screen} opacity="0.85" style={{ animation: `dsh-browser-scan ${duration} linear infinite` }} />
+            <rect x="4.4" y="8.2" width="2.2" height="2.6" fill={screen} style={{ animation: 'dsh-browser-blink 0.9s steps(1) infinite' }} />
+          </>
+        ) : null}
+        {tone === 'busy' && step === 'warming' ? (
+          <g fill={screen}>
+            <rect x="4.4" y="6.2" width="2.6" height="2.6" rx="0.6" style={{ animation: 'dsh-browser-pips 1.1s linear infinite' }} />
+            <rect x="8.2" y="6.2" width="2.6" height="2.6" rx="0.6" style={{ animation: 'dsh-browser-pips 1.1s linear infinite 0.18s' }} />
+            <rect x="12" y="6.2" width="2.6" height="2.6" rx="0.6" style={{ animation: 'dsh-browser-pips 1.1s linear infinite 0.36s' }} />
+          </g>
+        ) : null}
+        {tone === 'busy' && step === 'hardening' ? (
+          <path
+            d="M10 3.6 13.4 5v2.6c0 2.2-1.5 3.6-3.4 4.4-1.9-.8-3.4-2.2-3.4-4.4V5z"
+            stroke={screen}
+            strokeWidth="1.1"
+            strokeLinejoin="round"
+            strokeDasharray="14"
+            style={{ animation: 'dsh-browser-draw 1.2s ease-out infinite' }}
+          />
+        ) : null}
+        {tone === 'busy' && step === 'connecting' ? (
+          <g fill={screen} style={{ transformBox: 'fill-box' } as never}>
+            <rect x="5.2" y="7.6" width="1.8" height="3.2" rx="0.5" style={{ transformOrigin: '6.1px 10.8px', animation: 'dsh-browser-bars 0.9s ease-in-out infinite' }} />
+            <rect x="8.4" y="6.2" width="1.8" height="4.6" rx="0.5" style={{ transformOrigin: '9.3px 10.8px', animation: 'dsh-browser-bars 0.9s ease-in-out infinite 0.15s' }} />
+            <rect x="11.6" y="4.6" width="1.8" height="6.2" rx="0.5" style={{ transformOrigin: '12.5px 10.8px', animation: 'dsh-browser-bars 0.9s ease-in-out infinite 0.3s' }} />
+          </g>
+        ) : null}
+        {tone === 'live' ? (
+          <polyline
+            points="2.6,7 6,7 7.4,4.2 9,9.6 10.4,7 17.4,7"
+            stroke={screen}
+            strokeWidth="1.1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="32"
+            style={{ animation: 'dsh-browser-ekg 1.6s linear infinite' }}
+          />
+        ) : null}
+        {tone === 'attention' ? (
+          <g stroke={screen} strokeWidth="1.4" strokeLinecap="round" style={{ animation: 'dsh-browser-blink 1s steps(1) infinite' }}>
+            <path d="M10 4.2v4.2" />
+            <path d="M10 10.6v0.2" />
+          </g>
+        ) : null}
+        {tone === 'error' ? (
+          <g stroke={screen} strokeWidth="1.4" strokeLinecap="round">
+            <path d="M7.6 4.6l4.8 4.8M12.4 4.6l-4.8 4.8" />
+          </g>
+        ) : null}
+      </g>
+      {/* power LED: blinks while booting, solid once frames arrive */}
+      <circle
+        cx="17.4"
+        cy="11.6"
+        r="0.9"
+        fill={screen}
+        style={tone === 'busy' ? { animation: 'dsh-browser-blink 1s steps(1) infinite' } : undefined}
+      />
       {/* stand */}
       <path d="M7.4 13.4v1.9M12.6 13.4v1.9M5.6 15.9h8.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" opacity="0.72" />
       <defs>

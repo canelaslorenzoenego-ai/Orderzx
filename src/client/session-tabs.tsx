@@ -23,6 +23,33 @@ export interface SessionTabStripProps {
   onSelect(id: string): void
   /** Narrow layout: bigger hit targets, horizontal scroll. */
   narrow?: boolean
+  /**
+   * Close a session's browser (drive-scoped control message). Omitted = the
+   * strip is view-only and renders no close affordances.
+   */
+  onClose?(id: string): void
+}
+
+/**
+ * A stable per-origin avatar: hue hashed from the hostname, initial from its
+ * first label character. Offline and deterministic — no favicon fetches (a
+ * favicon request from the PANEL would be a cross-origin request the page
+ * never asked for, and it would leak which sites the agent visits to a
+ * third-party favicon cache).
+ */
+export function originAvatar(url: string | undefined): { hue: number; initial: string; host: string } {
+  let host = ''
+  try {
+    host = new URL(url ?? '').hostname
+  } catch {
+    host = ''
+  }
+  if (!host) return { hue: 220, initial: '•', host: '' }
+  let hash = 5381
+  for (let i = 0; i < host.length; i += 1) hash = ((hash << 5) + hash + host.charCodeAt(i)) | 0
+  const hue = Math.abs(hash) % 360
+  const initial = (host.replace(/^www\./, '')[0] ?? '•').toUpperCase()
+  return { hue, initial, host }
 }
 
 export function SessionTabStrip(props: SessionTabStripProps): ReactNode {
@@ -44,27 +71,100 @@ export function SessionTabStrip(props: SessionTabStripProps): ReactNode {
       </button>
       {sessions.map(entry => {
         const selected = props.selected === entry.id
+        const avatar = originAvatar(entry.url)
+        const live = entry.phase === 'streaming' || entry.phase === 'navigating' || entry.phase === 'ready'
+        // A div with role=tab, not a button: a tab that contains a close
+        // affordance cannot be a <button> (no interactive content inside a
+        // button), and the close tap must not select the tab.
         return (
-          <button
+          <div
             key={entry.id}
-            type="button"
             role="tab"
+            tabIndex={0}
             aria-selected={selected}
             style={tabStyles(selected, props.narrow === true)}
             onClick={() => props.onSelect(entry.id)}
-            title={`${entry.label ?? entry.id} · ${entry.url || entry.phase}${entry.challengeVendor ? ` · ${entry.challengeVendor} challenge` : ''}`}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                props.onSelect(entry.id)
+              }
+            }}
+            title={`${entry.label ?? entry.id} · ${avatar.host || entry.url || entry.phase}${entry.desktopView ? ' · desktop view' : ''}${entry.challengeVendor ? ` · ${entry.challengeVendor} challenge` : ''}`}
           >
-            <span style={dotStyles(entry)} aria-hidden="true" />
+            <span style={avatarStyles(avatar.hue)} aria-hidden="true">{avatar.initial}</span>
+            <span style={dotStyles(entry, live)} aria-hidden="true" />
             <span style={tabLabelStyles}>{entry.label ?? entry.id.slice(0, 6)}</span>
+            {entry.desktopView ? (
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-label="desktop view" style={{ flex: '0 0 auto', opacity: 0.75 }}>
+                <rect x="1.5" y="3" width="13" height="8.5" rx="1.4" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M6 14h4M8 11.5V14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            ) : null}
             {entry.owner === 'user' ? <span style={youDriveStyles}>you</span> : null}
-          </button>
+            {props.onClose ? (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={`close ${entry.label ?? entry.id}`}
+                title="close this browser"
+                style={closeStyles(props.narrow === true)}
+                onClick={event => {
+                  event.stopPropagation()
+                  props.onClose?.(entry.id)
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.stopPropagation()
+                    event.preventDefault()
+                    props.onClose?.(entry.id)
+                  }
+                }}
+              >
+                ×
+              </span>
+            ) : null}
+          </div>
         )
       })}
     </div>
   )
 }
 
-function dotStyles(entry: SessionSummary): CSSProperties {
+function avatarStyles(hue: number): CSSProperties {
+  return {
+    flex: '0 0 auto',
+    width: 14,
+    height: 14,
+    borderRadius: 4,
+    background: `hsl(${hue}, 55%, 42%)`,
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: 700,
+    lineHeight: '14px',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    userSelect: 'none',
+  }
+}
+
+function closeStyles(narrow: boolean): CSSProperties {
+  return {
+    flex: '0 0 auto',
+    minWidth: narrow ? 20 : 16,
+    height: narrow ? 20 : 16,
+    borderRadius: 5,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    lineHeight: 1,
+    color: 'var(--dsw-text-secondary, rgba(255,255,255,0.58))',
+    cursor: 'pointer',
+  }
+}
+
+function dotStyles(entry: SessionSummary, live: boolean): CSSProperties {
   const color = entry.challengeVendor
     ? '#d29922'
     : entry.phase === 'streaming' || entry.phase === 'ready' || entry.phase === 'navigating'
@@ -79,6 +179,9 @@ function dotStyles(entry: SessionSummary): CSSProperties {
     borderRadius: '50%',
     background: color,
     boxShadow: `0 0 5px ${color}`,
+    // A streaming browser breathes: the phase dot pulses on the same keyframe
+    // the capsule uses, so "alive" reads at a glance across many tabs.
+    ...(live ? { animation: 'dsh-browser-pulse 1.6s ease-in-out infinite' } : {}),
   }
 }
 

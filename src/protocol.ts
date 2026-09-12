@@ -81,6 +81,7 @@ export const TOOL_NAMES = {
   takeover: 'browser_takeover',
   task: 'browser_task',
   desktopView: 'browser_desktop_view',
+  cookies: 'browser_cookies',
 } as const
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES]
@@ -286,6 +287,12 @@ export type SessionMessage =
   /** Point the panel (and the tool default) at another sub-agent browser. */
   | { kind: 'switch-session'; id: string }
   /**
+   * Close one session's browser from the panel (the session tab's ×). Drive
+   * scope: it tears down a browser the agent may be mid-task in, and kills its
+   * stream — the same authority as starting one.
+   */
+  | { kind: 'stop-browser'; id: string }
+  /**
    * Ask the site for its desktop layout: a desktop UA + a wide emulated
    * viewport. This is what "view on my phone, drive a desktop page" means —
    * the phone panel is a window onto a desktop-class browser, and mobile sites
@@ -310,6 +317,21 @@ export interface SessionSummary {
   url: string
   challengeVendor: string | null
   desktopView: boolean
+}
+
+/**
+ * Cookie METADATA as exposed to the model: name, domain, flags, expiry — never
+ * the value. Session values are credentials; a tool that exfiltrates them into
+ * a conversation would turn every transcript into a credential dump.
+ */
+export interface CookieMeta {
+  name: string
+  domain: string
+  path: string
+  /** Unix seconds; -1 for session cookies. */
+  expires: number
+  httpOnly: boolean
+  secure: boolean
 }
 
 /** One tool action, for the timeline drawer. Never contains typed text. */

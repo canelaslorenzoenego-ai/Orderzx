@@ -220,6 +220,8 @@ export async function observe(
   const elements: FlatNode[] = []
   if (snapshot) flatten(snapshot.nodes, 0, elements)
 
+  rememberElements(sessionId, elements)
+
   const result: ObservationResult = {
     url: snapshot?.url ?? page.url(),
     title: snapshot?.title ?? '',
@@ -307,6 +309,7 @@ export async function see(
   }
   const marks = selectMarks(candidates, boxes, viewport, MAX_MARKS)
   setMarks(sessionId, marks)
+  rememberElements(sessionId, elements)
 
   const result: SeeResult = {
     url: snapshot?.url ?? page.url(),
@@ -348,6 +351,68 @@ export function marksTableText(marks: Mark[]): string {
   return marks
     .map(m => `[${m.mark}] ${m.role}${m.name ? ` "${m.name}"` : ''} @ ${Math.round(m.box.x)},${Math.round(m.box.y)} ${Math.round(m.box.width)}x${Math.round(m.box.height)} (ref ${m.ref})`)
     .join('\n')
+}
+
+// ── self-healing refs ───────────────────────────────────────────────────────
+
+/**
+ * The last observed element list per session — the memory self-healing needs.
+ *
+ * When a ref dies (the page re-rendered, an SPA route changed the tree), the
+ * honest old behaviour is E_STALE_REF. That is still the FLOOR, but a page that
+ * merely re-rendered the same button should not cost the model a whole observe
+ * round-trip: we remember what the stale ref USED to be (role + accessible
+ * name) and look for one exact role+name match in a fresh snapshot. Zero or
+ * two-plus matches = no heal, fail loudly — guessing between candidates is how
+ * a bot clicks "Delete" instead of "Cancel".
+ */
+const elementsCache = new Map<string, FlatNode[]>()
+
+export function rememberElements(sessionId: string, elements: FlatNode[]): void {
+  elementsCache.set(sessionId, elements)
+  if (elementsCache.size > 32) {
+    const oldest = elementsCache.keys().next().value
+    if (oldest !== undefined) elementsCache.delete(oldest)
+  }
+}
+
+/**
+ * Try to re-find a dead ref. Returns the fresh ref, or undefined when the
+ * element genuinely is gone (or was never observed through this plugin).
+ */
+export async function healRef(sessionId: string, page: EnginePage, staleRef: string): Promise<string | undefined> {
+  const old = elementsCache.get(sessionId)?.find(node => node.ref === staleRef)
+  if (!old || old.name.length === 0) return undefined
+  const snapshot = await page.snapshot({ maxNodes: MAX_SNAPSHOT_NODES, maxNameLength: MAX_NAME_LENGTH }).catch(() => undefined)
+  if (!snapshot) return undefined
+  const fresh: FlatNode[] = []
+  flatten(snapshot.nodes, 0, fresh)
+  rememberElements(sessionId, fresh)
+  const matches = fresh.filter(node => node.role === old.role && node.name === old.name && node.disabled !== true)
+  return matches.length === 1 ? matches[0]?.ref : undefined
+}
+
+export interface RefBoxResult {
+  ref: string
+  box?: { x: number; y: number; width: number; height: number }
+  /** The original ref was dead and one exact role+name match replaced it. */
+  healedFrom?: string
+}
+
+/**
+ * boxOf with one self-heal attempt folded in. Throws nothing: a dead ref that
+ * cannot heal comes back as `{ box: undefined }` and the caller writes its own
+ * "observe again" message. Both engine failure shapes are covered: a thrown
+ * E_STALE_REF (ref map no longer knows the ref) and a resolved-but-boxless ref
+ * (element hidden or detached since the snapshot).
+ */
+export async function resolveRefBox(page: EnginePage, sessionId: string, ref: string): Promise<RefBoxResult> {
+  const first = await page.boxOf(ref).catch(() => undefined)
+  if (first) return { ref, box: first }
+  const healed = await healRef(sessionId, page, ref)
+  if (!healed || healed === ref) return { ref, box: undefined }
+  const box = await page.boxOf(healed).catch(() => undefined)
+  return box ? { ref: healed, box, healedFrom: ref } : { ref, box: undefined }
 }
 
 export { MARK_NAME_LENGTH, MAX_MARKS, MAX_MARKS as SEE_MAX_MARKS }

@@ -59,7 +59,7 @@ export {
   InteractionOverlay, applyInteraction, pruneOverlay, resetOverlay, OVERLAY_TTL,
   type OverlayState, type ClickPulse, type FocusRing, type GestureTrail, type ToastMessage,
 } from './interaction-overlay.js'
-export { SessionTabStrip, TimelineDrawer, type SessionTabStripProps, type TimelineDrawerProps } from './session-tabs.js'
+export { SessionTabStrip, TimelineDrawer, originAvatar, type SessionTabStripProps, type TimelineDrawerProps } from './session-tabs.js'
 export { HomeTab, readMru, pushMru, type HomeTabProps } from './home-tab.js'
 export { PANEL_NARROW_PX } from './panel-host.js'
 

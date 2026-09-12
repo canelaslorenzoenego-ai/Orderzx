@@ -14,6 +14,15 @@ with your own fingerprint and IP: the one solve that always works.
 
 **Zero cloud. Zero accounts.** Everything runs on `127.0.0.1`.
 
+**Ready to install — one command:**
+
+```bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/latest/download/install.sh | bash
+```
+
+It clones to `~/.orderzx/dsh-browser`, installs, builds, and prints the exact
+line to add `dsh-browser` to your harness plugin list. Details: [Install](#install).
+
 ![The boot sequence: capsule pops on the chatbar, the dashboard extends, the live stream paints, and the agent's gestures animate over the frames](docs/assets/boot-sequence.svg)
 
 ```
@@ -109,8 +118,10 @@ pnpm run test:e2e    # 15: host + routes + client bundle + Chrome
 curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/latest/download/install.sh | bash
 ```
 
-Or clone and `pnpm install && pnpm run build`, then add `dsh-browser` to your
-harness plugin list. Release assets: `install.sh` + a sample replay reel.
+Prefer source? Clone and `pnpm install && pnpm run build`, then add `dsh-browser`
+to your harness plugin list. The script above does exactly this into
+`~/.orderzx/dsh-browser` and prints the cordis patch line for you.
+Release assets: `install.sh` + a sample replay reel.
 
 ## Configuration
 

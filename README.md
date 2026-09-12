@@ -1,6 +1,18 @@
 ![Orderzx — an autonomous, stealth-first browser for DeepSeek Harness: the wordmark over a dark neon grid beside an animated panel mock with session tabs, a live page stream and the agent's ghost cursor](docs/assets/orderzx-banner.svg)
 
-**Release:** [v0.1.0-rc.1](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.1.0-rc.1) · **Showcase site:** [canelaslorenzoenego-ai.github.io/Orderzx](https://canelaslorenzoenego-ai.github.io/Orderzx/) ([`docs/index.html`](docs/index.html) — single self-contained file, served by GitHub Pages)
+<div align="center">
+
+[![version](https://img.shields.io/badge/version-v0.1.0--rc.1-1f6feb?style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.1.0-rc.1)
+[![platform](https://img.shields.io/badge/platform-Chromium_150%2B_%C2%B7_3_engines-238636?style=flat-square)](#what-it-is)
+[![smoke tests](https://img.shields.io/badge/smoke_tests-494%2F494_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
+[![backend](https://img.shields.io/badge/backend-none_%C2%B7_on--loopback-9a6700?style=flat-square)](#security-posture)
+[![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
+
+:globe_with_meridians: [Website](https://canelaslorenzoenego-ai.github.io/Orderzx/) · :arrow_down: [Download the release](https://github.com/canelaslorenzoenego-ai/Orderzx/releases/tag/v0.1.0-rc.1) · :compass: [Architecture](#what-it-is) · :hammer_and_wrench: [Build from source](#install) · :question: [FAQ](#dual-use--read-this)
+
+</div>
+
+*The showcase site is a single self-contained file at [`docs/index.html`](docs/index.html), served by GitHub Pages.*
 
 # Orderzx
 

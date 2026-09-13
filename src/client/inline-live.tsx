@@ -273,8 +273,6 @@ export function InlineLiveFrame(props: InlineLiveFrameProps): ReactNode {
           <span style={chevronStyles(expanded)} aria-hidden="true">▾</span>
           <span style={dashDotStyles(streaming)} aria-hidden="true" />
           <span style={dashTitleStyles}>Live browser</span>
-          {browserSession ? <span style={sessionChipStyles}>{browserSession.slice(0, 6)}</span> : null}
-          {streaming && fps > 0 ? <span style={dashFpsStyles}>{fps} fps</span> : null}
         </button>
         <button
           type="button"
@@ -521,25 +519,6 @@ const dashTitleStyles: CSSProperties = {
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
   minWidth: 0,
-}
-
-const sessionChipStyles: CSSProperties = {
-  flex: '0 0 auto',
-  fontSize: 10.5,
-  fontWeight: 600,
-  fontVariantNumeric: 'tabular-nums',
-  color: 'var(--dsw-text-secondary, #4b5563)',
-  background: 'var(--dsw-bg-tertiary, #f2f3f5)',
-  border: '1px solid var(--dsw-border-color, rgba(15,23,42,0.08))',
-  borderRadius: 6,
-  padding: '1px 6px',
-}
-
-const dashFpsStyles: CSSProperties = {
-  flex: '0 0 auto',
-  fontSize: 11,
-  color: 'var(--dsw-text-tertiary, #6b7280)',
-  fontVariantNumeric: 'tabular-nums',
 }
 
 function followChipStyles(on: boolean): CSSProperties {

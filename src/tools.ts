@@ -2019,26 +2019,32 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       const resolved = resolveTarget(host, args.session)
       if (!resolved.ok) return refusalValue(resolved) as never
       const script = `(() => {
-        const clean = t => (t || '').split('\n').map(x => x.trim()).filter(Boolean)
+        const clean = t => (t || '').split('\\n').map(x => x.trim()).filter(Boolean)
         const seg = [...document.querySelectorAll('ytd-transcript-segment-renderer')]
-        if (seg.length) return { source: 'transcript-panel', title: document.title || '', lines: seg.map(el => (el.innerText || '').replace(/\n+/g, ' ').trim()).filter(Boolean) }
+        if (seg.length) return { source: 'transcript-panel', title: document.title || '', lines: seg.map(el => (el.innerText || '').replace(/\\n+/g, ' ').trim()).filter(Boolean) }
         let tracks = []
         try {
           const p = window.ytInitialPlayerResponse
           const list = p && p.captions && p.captions.playerCaptionsTracklistRenderer && p.captions.playerCaptionsTracklistRenderer.captionTracks
           if (Array.isArray(list)) tracks = list.map(t => (t.name && (t.name.simpleText || (t.name.runs || []).map(r => r.text).join(''))) || t.languageCode || 'track')
         } catch {}
-        const chapters = [...document.querySelectorAll('ytd-macro-markers-list-item-renderer')].map(el => (el.innerText || '').replace(/\n+/g, ' ').trim()).filter(Boolean)
+        const chapters = [...document.querySelectorAll('ytd-macro-markers-list-item-renderer')].map(el => (el.innerText || '').replace(/\\n+/g, ' ').trim()).filter(Boolean)
         if (chapters.length) return { source: 'chapters', title: document.title || '', lines: chapters, langs: tracks }
         const desc = document.querySelector('meta[property="og:description"], meta[name="description"]')
         const body = clean(document.body ? document.body.innerText : '').slice(0, 60)
         const lines = desc ? clean(desc.getAttribute('content')).concat(body) : body
         return { source: tracks.length ? 'caption-tracks' : 'page-text', title: document.title || '', lines, langs: tracks }
       })()`
-      const raw = await resolved.page.evaluateIsolated<{ source?: string; title?: string; lines?: unknown; langs?: unknown }>(script).catch(() => undefined)
+      let scriptError: string | undefined
+      const raw = await resolved.page.evaluateIsolated<{ source?: string; title?: string; lines?: unknown; langs?: unknown }>(script).catch((err: unknown) => {
+        // Do not swallow silently: a script failure and a genuinely text-less
+        // page need different diagnoses (bug #32 hid here for a whole release).
+        scriptError = String((err as { message?: string })?.message ?? err).slice(0, 160)
+        return undefined
+      })
       const lines = Array.isArray(raw?.lines) ? raw.lines.filter((l): l is string => typeof l === 'string').slice(0, 200) : []
       const source = raw?.source === 'transcript-panel' || raw?.source === 'chapters' || raw?.source === 'caption-tracks' || raw?.source === 'page-text' ? raw.source : 'page-text'
-      if (lines.length === 0) return { ok: false, source, message: 'no readable text on this page' } as never
+      if (lines.length === 0) return { ok: false, source, message: scriptError ? `transcript script failed: ${scriptError}` : 'no readable text on this page' } as never
       const langs = Array.isArray(raw?.langs) ? raw.langs.filter((l): l is string => typeof l === 'string') : []
       acted(resolved.sessionId, TOOL_NAMES.transcript, `transcript via ${source} — ${lines.length} line(s)`)
       return {

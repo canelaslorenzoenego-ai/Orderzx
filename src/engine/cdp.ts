@@ -89,10 +89,17 @@ export const cdpProvider: EngineProviderAdapter = {
     // rather than reusing patchrightProvider.launch, because nothing was
     // launched and the posture is entirely different.
     const pages = new Map<string, EnginePage>()
+    // raw → wrapper registry: `context.newPage()` wraps directly AND fires the
+    // context 'page' event, so without dedupe every new tab gets two wrappers
+    // (two ids, double entries in pages()) — and closed tabs must be evicted
+    // or pages() lists ghosts forever.
+    const byRaw = new Map<any, EnginePage>()
     let counter = 0
     let activeId: string | undefined
 
     const wrap = (raw: any): EnginePage => {
+      const existing = byRaw.get(raw)
+      if (existing) return existing
       const id = `p${(counter += 1)}`
       // probeTouch: this engine attaches to the user's OWN real browser (often
       // Chrome on Android via adb) — a one-shot maxTouchPoints probe there is
@@ -267,6 +274,12 @@ export const cdpProvider: EngineProviderAdapter = {
         },
       }
       pages.set(id, page)
+      byRaw.set(raw, page)
+      raw.on?.('close', () => {
+        pages.delete(id)
+        byRaw.delete(raw)
+        if (activeId === id) activeId = pages.keys().next().value
+      })
       return page
     }
 

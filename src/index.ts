@@ -100,27 +100,6 @@ export const name = PLUGIN_NAME
 export const inject = ['tools']
 
 /**
- * The plugin itself, as the DEFAULT export.
- *
- * This is load-bearing, not stylistic: the official harness loader
- * (`@deepseek-ai/cordis-plugin-loader`) unwraps a plugin module with
- * `exports.default ?? exports` and then demands a function, a class, or an
- * `{ apply }` object. A default export of anything else — a config schema, a
- * namespace re-export — makes the real harness reject the entry with
- * "invalid plugin", while direct `ctx.plugin(apply)` tests keep passing and
- * hide the break. Config rides along as a property so cordis still validates
- * the user's YAML against it before `apply` runs.
- */
-const DshBrowserPlugin = {
-  name: PLUGIN_NAME,
-  inject,
-  Config,
-  apply,
-}
-
-export { DshBrowserPlugin as default }
-
-/**
  * rc-line source worktrees augmented the legacy `cordis` package name while the
  * published line augments `@deepseek-ai/cordis`. Keep the build structural so the
  * same source type-checks against both without changing the runtime contract.
@@ -135,7 +114,21 @@ interface ApprovalServiceLike {
   ask?(input: { title: string; detail?: string; kind?: string }): Promise<boolean>
 }
 
-export function apply(ctx: Context, userConfig?: unknown): () => Promise<void> {
+/**
+ * The plugin body.
+ *
+ * MUST be an arrow function — this is load-bearing, not stylistic. Cordis
+ * detects "class plugins" with a `func.prototype` heuristic, and EVERY
+ * non-arrow function has one. A `function apply(...)` here is constructed
+ * with `new`, and a constructor's return value is only inspected for
+ * `symbols.init` hooks — the teardown function we return would be silently
+ * DROPPED. Sessions, CDP sockets, frame timers and capture files would then
+ * survive every unload/reload in the real harness, while every in-repo test
+ * that only checks tool unregistration (an effect-scope job) stays green.
+ * An arrow function has no `.prototype`, so cordis plain-calls it and the
+ * returned teardown is collected as the fiber's disposer.
+ */
+export const apply = (ctx: Context, userConfig?: unknown): (() => Promise<void>) => {
   const hostCtx = ctx as HostContext
   const config: BrowserConfig = resolveConfig(userConfig)
 
@@ -283,12 +276,37 @@ export function apply(ctx: Context, userConfig?: unknown): () => Promise<void> {
   void TOOL_NAMES
 
   return async () => {
+    ctx.logger.info('dsh-browser unmounting — closing sessions and transports')
     for (const dispose of disposers.reverse()) await dispose()
     await host.dispose()
     // Final sweep: a long session at 5 fps writes a lot of JPEGs into tmp.
     await pruneAll(0).catch(() => undefined)
+    ctx.logger.info('dsh-browser unmounted')
   }
 }
+
+/**
+ * The plugin itself, as the DEFAULT export. Declared AFTER `apply`: an arrow
+ * function is not hoisted, and this object references it.
+ *
+ *
+ * This is load-bearing, not stylistic: the official harness loader
+ * (`@deepseek-ai/cordis-plugin-loader`) unwraps a plugin module with
+ * `exports.default ?? exports` and then demands a function, a class, or an
+ * `{ apply }` object. A default export of anything else — a config schema, a
+ * namespace re-export — makes the real harness reject the entry with
+ * "invalid plugin", while direct `ctx.plugin(apply)` tests keep passing and
+ * hide the break. Config rides along as a property so cordis still validates
+ * the user's YAML against it before `apply` runs.
+ */
+const DshBrowserPlugin = {
+  name: PLUGIN_NAME,
+  inject,
+  Config,
+  apply,
+}
+
+export { DshBrowserPlugin as default }
 
 // ── config readers ──────────────────────────────────────────────────────────
 

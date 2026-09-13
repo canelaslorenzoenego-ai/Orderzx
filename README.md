@@ -21,7 +21,7 @@ with your own fingerprint and IP: the one solve that always works.
 **Ready to install — one command:**
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.4/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.5/install.sh | bash
 ```
 
 It clones to `~/.orderzx/dsh-browser`, installs, builds, and prints the exact
@@ -121,7 +121,7 @@ node scripts/dev-host-mount-smoke.mjs  # 5: real cordis loader mount
 ## Install
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.4/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.5/install.sh | bash
 ```
 
 Prefer source? Clone and `pnpm install && pnpm run build`, then wire the built

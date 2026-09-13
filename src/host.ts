@@ -1298,8 +1298,8 @@ export class BrowserHostController {
         lastCapturePath: session.lastCapturePath,
       },
       compat: compatReport(PLUGIN_VERSION),
-      takeover: session.owner === 'user' ? { since: session.takeoverSince ?? Date.now(), by: session.challenge ? 'agent-handoff' : 'user' } : undefined,
-      challenge: session.challenge ?? undefined,
+      ...(session.owner === 'user' ? { takeover: { since: session.takeoverSince ?? Date.now(), by: session.challenge ? 'agent-handoff' : 'user' } } : {}),
+      ...(session.challenge ? { challenge: session.challenge } : {}),
       stealth: {
         humanize: posture.humanize,
         fingerprintProfile: posture.fingerprintProfile,
@@ -1322,7 +1322,7 @@ export class BrowserHostController {
         console: session.debug.console.slice(-100),
         network: session.debug.network.slice(-100),
       },
-      error: session.error ?? undefined,
+      ...(session.error ? { error: session.error } : {}),
     }
   }
 

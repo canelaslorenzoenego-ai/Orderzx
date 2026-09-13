@@ -107,6 +107,31 @@ export const imageResultSchema = {
   },
 } as const
 
+/**
+ * Project a Detection down to the model-facing shape declared by
+ * {@link challengeSchema}. `signal`, `responseField` and `evidence` are audit
+ * fields (the schema is closed on purpose): leaking them made every value
+ * carrying a challenge fail the runtime's output-schema enforcement on real
+ * model calls, while direct execute() tests stayed green.
+ */
+export interface ModelChallenge {
+  present: boolean
+  vendor: string
+  blocking: boolean
+  solved?: boolean
+  sitekey?: string
+}
+
+export function challengeForModel(d: Detection): ModelChallenge {
+  return {
+    present: d.present,
+    vendor: d.vendor,
+    blocking: d.blocking,
+    ...(d.solved === undefined ? {} : { solved: d.solved }),
+    ...(typeof d.sitekey === 'string' ? { sitekey: d.sitekey } : {}),
+  }
+}
+
 export const challengeSchema = {
   type: 'object',
   additionalProperties: false,
@@ -192,7 +217,7 @@ export interface ObservationResult {
   elements: FlatNode[]
   elementCount: number
   truncated: boolean
-  challenge: Detection
+  challenge: ModelChallenge
   viewport: { width: number; height: number }
   capturePath?: string
   image?: BrowserImageRef
@@ -236,7 +261,7 @@ export async function observe(
     elements,
     elementCount: elements.length,
     truncated: snapshot?.truncated ?? false,
-    challenge,
+    challenge: challengeForModel(challenge),
     viewport: page.viewport(),
     siteTools: siteTools === true,
   }
@@ -277,7 +302,7 @@ export interface SeeResult {
   markCount: number
   /** Interactive candidates that existed before the mark cap / visibility filter. */
   candidateCount: number
-  challenge: Detection
+  challenge: ModelChallenge
   viewport: { width: number; height: number }
   capturePath?: string
   image?: BrowserImageRef
@@ -326,7 +351,7 @@ export async function see(
     marks,
     markCount: marks.length,
     candidateCount: candidates.length,
-    challenge,
+    challenge: challengeForModel(challenge),
     viewport,
   }
 

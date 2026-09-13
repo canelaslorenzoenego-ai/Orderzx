@@ -39,6 +39,7 @@ import { sessionBoundWarning } from './challenge/pipeline.js'
 import {
   ACTION_SETTLE_MS,
   captureMeta,
+  challengeForModel,
   challengeSchema,
   detectChallenge,
   elementsSchema,
@@ -174,6 +175,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
             },
           },
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -302,6 +304,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           elementCount: { type: 'number', required: true },
           truncated: { type: 'boolean', required: true },
           challenge: challengeSchema,
+          siteTools: { type: 'boolean' },
           viewport: {
             type: 'object', additionalProperties: false,
             properties: { width: { type: 'number', required: true }, height: { type: 'number', required: true } },
@@ -310,6 +313,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           image: imageResultSchema,
           ok: { type: 'boolean' },
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -379,6 +383,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           image: imageResultSchema,
           ok: { type: 'boolean' },
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -437,6 +442,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           capturePath: { type: 'string' },
           image: imageResultSchema,
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -446,8 +452,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         return {
           tool: TOOL_NAMES.click,
           phase: 'streaming',
-          url: record.url,
-          capturePath: record.capturePath,
+          ...(typeof record.url === 'string' ? { url: record.url } : {}),
+          ...(typeof record.capturePath === 'string' ? { capturePath: record.capturePath } : {}),
           summary: record.ok === true ? `clicked ${record.target ?? 'point'}` : `click refused: ${record.message ?? record.refused ?? '?'}`,
         } as never
       },
@@ -545,7 +551,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         ...(healedFrom === undefined ? {} : { healedFrom }),
         point: { x: Math.round(point.x), y: Math.round(point.y) },
         navigated: beforeUrl !== page.url(),
-        challenge,
+        challenge: challengeForModel(challenge),
         // `after` carries title (and capturePath/image when produced); listing
         // title again before the spread would be overwritten silently.
         ...after,
@@ -583,6 +589,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           url: { type: 'string' },
           challenge: challengeSchema,
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -660,7 +667,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         // the trajectory view, and possibly a screenshot.
         ...(isSecret ? { redacted: true } : value === undefined ? {} : { value }),
         url: page.url(),
-        challenge,
+        challenge: challengeForModel(challenge),
       } as never
     },
   })
@@ -669,7 +676,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
     name: TOOL_NAMES.press,
     description: 'Press a key or combination: Enter, Tab, Escape, ArrowDown, PageDown, ControlOrMeta+a, Control+c.',
     parameters: { session: sessionSchema, key: { type: 'string', required: true } },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, key: { type: 'string' }, url: { type: 'string' }, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, key: { type: 'string' }, url: { type: 'string' }, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
@@ -697,7 +705,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       deltaY: { type: 'number', description: 'Exact pixel delta. Overrides direction/amount.' },
       ref: { type: 'string', description: 'Scroll within this element instead of the page.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, scrollY: { type: 'number' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, scrollY: { type: 'number' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
@@ -716,7 +725,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           await sleep(ACTION_SETTLE_MS, exec.signal).catch(() => undefined)
           host.record(sessionId, 'agent', { type: 'scroll', deltaX, deltaY: 0 })
           acted(sessionId, TOOL_NAMES.scroll, `scroll ${direction} ×${amount}`)
-          return { ok: true, scrollY: await scrollPosition(page), url: page.url(), challenge: await detectChallenge(page) } as never
+          return { ok: true, scrollY: await scrollPosition(page), url: page.url(), challenge: challengeForModel(await detectChallenge(page)) } as never
         }
       }
 
@@ -730,7 +739,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       acted(sessionId, TOOL_NAMES.scroll, `scroll ${deltaY > 0 ? 'down' : deltaY < 0 ? 'up' : ''} ${Math.round(Math.abs(deltaY))}px`)
       const challenge = await detectChallenge(page)
       if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
-      return { ok: true, scrollY: await scrollPosition(page), url: page.url(), challenge } as never
+      return { ok: true, scrollY: await scrollPosition(page), url: page.url(), challenge: challengeForModel(challenge) } as never
     },
   })
 
@@ -747,7 +756,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       action: { type: 'string', description: 'back | forward | reload | stop.' },
       waitUntil: { type: 'string', description: 'domcontentloaded (default) | load | networkidle.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, url: { type: 'string' }, title: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, url: { type: 'string' }, title: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
@@ -770,7 +780,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       }
       const challenge = await detectChallenge(page)
       if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
-      return { ok: true, url: page.url(), title: await page.title().catch(() => ''), challenge } as never
+      return { ok: true, url: page.url(), title: await page.title().catch(() => ''), challenge: challengeForModel(challenge) } as never
     },
   })
 
@@ -783,7 +793,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       index: { type: 'number', description: 'Tab index for select/close.' },
       url: { type: 'string', description: 'URL for `new`.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, active: { type: 'number' }, tabs: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } }, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, active: { type: 'number' }, tabs: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } }, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const resolved = resolveSession(host, args.session)
       if (!resolved.ok) return refusalValue(resolved) as never
@@ -861,7 +872,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       submitRef: { type: 'string', description: 'Ref to click after filling. Treated as a sensitive action.' },
       verify: { type: 'boolean', description: 'Read every field back after filling and report per-field expected-vs-actual. Default true — turn it off only for fields that transform input (masks, autocorrect).' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, filled: { type: 'number' }, failed: { type: 'number' }, verified: { type: 'number' }, mismatched: { type: 'number' }, results: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } }, submitted: { type: 'boolean' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, filled: { type: 'number' }, failed: { type: 'number' }, verified: { type: 'number' }, mismatched: { type: 'number' }, results: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } }, submitted: { type: 'boolean' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
@@ -927,7 +939,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
 
       const challenge = await detectChallenge(page)
       if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
-      return { ok: filled > 0, filled, failed: results.length - filled, verified, mismatched, results, submitted, url: page.url(), challenge } as never
+      return { ok: filled > 0, filled, failed: results.length - filled, verified, mismatched, results, submitted, url: page.url(), challenge: challengeForModel(challenge) } as never
     },
   })
 
@@ -944,7 +956,9 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       schema: { type: 'object', additionalProperties: true, description: 'Optional JSON-schema CONTRACT for your own structured attempt. Pass it together with `data`; this tool validates before anything downstream trusts it.' },
       data: { type: 'object', additionalProperties: true, description: 'Your structured attempt, shaped to `schema`. On violation the tool returns the exact paths plus a DEEPER text pass to repair against — one round-trip, not three.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, url: { type: 'string' }, text: { type: 'string' }, elements: elementsSchema, validated: { type: 'boolean' }, data: { type: 'object', additionalProperties: true }, violations: { type: 'array', items: { type: 'string' } }, siteTools: { type: 'boolean' }, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, url: { type: 'string' }, text: { type: 'string' }, elements: elementsSchema, validated: { type: 'boolean' },
+          instruction: { type: 'string' }, data: { type: 'object', additionalProperties: true }, violations: { type: 'array', items: { type: 'string' } }, siteTools: { type: 'boolean' }, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
@@ -1011,6 +1025,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           url: { type: 'string' },
           challenge: challengeSchema,
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -1054,7 +1069,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         if (!result.ok) return refusalValue(result) as never
         acted(sessionId, TOOL_NAMES.act, `act open ${url.slice(0, 60)}`)
         const challenge = await detectChallenge(page)
-        return { ok: true, action: 'open', matched: url, url: page.url(), challenge } as never
+        return { ok: true, action: 'open', matched: url, url: page.url(), challenge: challengeForModel(challenge) } as never
       }
       if (parsed.verb === 'scroll') {
         const viewport = page.viewport()
@@ -1065,7 +1080,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         await sleep(ACTION_SETTLE_MS, exec.signal).catch(() => undefined)
         host.record(sessionId, 'agent', { type: 'scroll', deltaX, deltaY })
         acted(sessionId, TOOL_NAMES.act, `act scroll ${direction}`)
-        return { ok: true, action: 'scroll', matched: `scrolled ${direction}`, url: page.url(), challenge: await detectChallenge(page) } as never
+        return { ok: true, action: 'scroll', matched: `scrolled ${direction}`, url: page.url(), challenge: challengeForModel(await detectChallenge(page)) } as never
       }
 
       // Element verbs: observe, rank the tree against the instruction's target.
@@ -1142,7 +1157,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         acted(sessionId, TOOL_NAMES.act, `act type ${parsed.text?.length ?? 0} chars into ${node.ref}`)
         const challenge = await detectChallenge(page)
         if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
-        return { ok: true, action: 'type', ref: node.ref, matched: `${node.role} "${node.name}"`, url: page.url(), challenge, cache: await rememberResolution() } as never
+        return { ok: true, action: 'type', ref: node.ref, matched: `${node.role} "${node.name}"`, url: page.url(), challenge: challengeForModel(challenge), cache: await rememberResolution() } as never
       }
 
       // click / tap / select / check
@@ -1166,7 +1181,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       const challenge = await detectChallenge(page)
       if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
       acted(sessionId, TOOL_NAMES.act, `act ${parsed.verb} ${node.ref} "${node.name}"`)
-      return { ok: true, action: parsed.verb, ref: node.ref, matched: `${node.role} "${node.name}"`, url: page.url(), challenge, cache: await rememberResolution() } as never
+      return { ok: true, action: parsed.verb, ref: node.ref, matched: `${node.role} "${node.name}"`, url: page.url(), challenge: challengeForModel(challenge), cache: await rememberResolution() } as never
     },
   })
 
@@ -1184,7 +1199,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       challengeCleared: { type: 'boolean', description: 'Wait until no blocking challenge remains.' },
       timeoutMs: { type: 'number', description: 'Default 30 000, max 120 000.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, matched: { type: 'boolean' }, waitedMs: { type: 'number' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, matched: { type: 'boolean' }, waitedMs: { type: 'number' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
@@ -1194,7 +1210,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       if (typeof args.ms === 'number') {
         const capped = Math.max(0, Math.min(60_000, args.ms))
         await sleep(capped, exec.signal).catch(() => undefined)
-        return { ok: true, matched: true, waitedMs: Date.now() - started, url: page.url(), challenge: await detectChallenge(page) } as never
+        return { ok: true, matched: true, waitedMs: Date.now() - started, url: page.url(), challenge: challengeForModel(await detectChallenge(page)) } as never
       }
 
       const timeout = Math.max(500, Math.min(120_000, args.timeoutMs ?? 30_000))
@@ -1202,21 +1218,21 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       while (Date.now() < deadline) {
         if (exec.signal?.aborted) return { ok: false, matched: false, waitedMs: Date.now() - started, message: 'aborted' } as never
         if (args.urlIncludes && page.url().includes(args.urlIncludes)) {
-          return { ok: true, matched: true, waitedMs: Date.now() - started, url: page.url(), challenge: await detectChallenge(page) } as never
+          return { ok: true, matched: true, waitedMs: Date.now() - started, url: page.url(), challenge: challengeForModel(await detectChallenge(page)) } as never
         }
         if (args.text) {
           const found = await page.evaluateIsolated<boolean>(`(() => (document.body?.innerText || '').includes(${JSON.stringify(args.text)}))()`).catch(() => false)
-          if (found) return { ok: true, matched: true, waitedMs: Date.now() - started, url: page.url(), challenge: await detectChallenge(page) } as never
+          if (found) return { ok: true, matched: true, waitedMs: Date.now() - started, url: page.url(), challenge: challengeForModel(await detectChallenge(page)) } as never
         }
         if (args.challengeCleared) {
           const detection = await detectChallenge(page)
           if (!detection.present || !detection.blocking) {
-            return { ok: true, matched: true, waitedMs: Date.now() - started, url: page.url(), challenge: detection } as never
+            return { ok: true, matched: true, waitedMs: Date.now() - started, url: page.url(), challenge: challengeForModel(detection) } as never
           }
         }
         await sleep(500, exec.signal).catch(() => undefined)
       }
-      return { ok: true, matched: false, waitedMs: Date.now() - started, url: page.url(), challenge: await detectChallenge(page), message: 'timed out' } as never
+      return { ok: true, matched: false, waitedMs: Date.now() - started, url: page.url(), challenge: challengeForModel(await detectChallenge(page)), message: 'timed out' } as never
     },
   })
 
@@ -1228,7 +1244,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       + 'execution that undoes the isolation the stealth posture depends on, and `element.click()` from here is a '
       + 'signature that humanized input exists to avoid.',
     parameters: { session: sessionSchema, script: { type: 'string', required: true, description: 'An expression or IIFE returning a JSON-serializable value.' } },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, result: { type: 'object', additionalProperties: true }, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, result: { type: 'object', additionalProperties: true }, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args) {
       if (!host.config.policy.allowEvaluate) {
         return {
@@ -1270,7 +1287,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           sessionBound: { type: 'boolean' },
           warning: { type: 'string' },
           history: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          refused: { type: 'string' }, message: { type: 'string' },
+          refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' },
         },
       },
       render: renderJson,
@@ -1305,7 +1323,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       if (!target.ok) return refusalValue(target) as never
       const detection = await detectChallenge(target.page)
       if (!detection.present) {
-        return { ok: true, detection, verdict: 'no challenge detected on this page', action: 'none', history: [] } as never
+        return { ok: true, detection: challengeForModel(detection), verdict: 'no challenge detected on this page', action: 'none', history: [] } as never
       }
       // Evaluate without running the handoff: this tool REPORTS, browser_handoff ACTS.
       const verdict: Verdict = await challenge.evaluate(detection, target.page.url(), target.page, exec.signal).catch(error => ({
@@ -1316,7 +1334,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       }))
       return {
         ok: true,
-        detection,
+        detection: challengeForModel(detection),
         verdict: describeVerdict(verdict),
         action: verdict.action,
         tier: 'tier' in verdict ? verdict.tier : undefined,
@@ -1349,7 +1367,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           waitedMs: { type: 'number' },
           url: { type: 'string' },
           nextStep: { type: 'string' },
-          refused: { type: 'string' }, message: { type: 'string' },
+          refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' },
         },
       },
       render: renderJson,
@@ -1408,7 +1427,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       reason: { type: 'string', required: true, description: 'Shown to the user in the panel.' },
       timeoutMs: { type: 'number', description: 'Default 300 000, max 1 800 000.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, resumed: { type: 'boolean' }, waitedMs: { type: 'number' }, url: { type: 'string' }, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, resumed: { type: 'boolean' }, waitedMs: { type: 'number' }, url: { type: 'string' }, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const resolved = resolveSession(host, args.session)
       if (!resolved.ok) return refusalValue(resolved) as never
@@ -1468,7 +1488,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           stepsTotal: { type: 'number' },
           fallbacks: { type: 'number' },
           error: { type: 'string' },
-          refused: { type: 'string' }, message: { type: 'string' },
+          refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' },
         },
       },
       render: renderJson,
@@ -1529,6 +1550,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           ok: { type: 'boolean', required: true },
           enabled: { type: 'boolean' },
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -1586,6 +1608,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           count: { type: 'number' },
           cleared: { type: 'number' },
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -1637,6 +1660,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           bytes: { type: 'number' },
           suggested: { type: 'string' },
           refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -1705,7 +1729,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       name: { type: 'string', description: 'Workflow name (start: optional label; run/delete: required).' },
       vars: { type: 'object', additionalProperties: true, description: 'run: values for the workflow\'s {{variables}} — secrets go here at replay time, never into the saved file.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, name: { type: 'string' }, steps: { type: 'number' }, variables: { type: 'array', items: { type: 'string' } }, truncated: { type: 'boolean' }, workflows: { type: 'array', items: { type: 'object', additionalProperties: true } }, replayed: { type: 'number' }, fallbacks: { type: 'number' }, refused: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, name: { type: 'string' }, steps: { type: 'number' }, variables: { type: 'array', items: { type: 'string' } }, truncated: { type: 'boolean' }, workflows: { type: 'array', items: { type: 'object', additionalProperties: true } }, replayed: { type: 'number' }, fallbacks: { type: 'number' }, refused: { type: 'string' },
+          owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args) {
       const action = String(args.action)
       const name = typeof args.name === 'string' ? args.name : undefined

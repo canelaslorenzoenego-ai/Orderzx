@@ -752,6 +752,23 @@ const el = React.createElement
   step('the window shell fills its parent column', WINDOW_SHELL_STYLES.flex === '1 1 auto' && WINDOW_SHELL_STYLES.minHeight === 0)
   step('the inline frame box is phone-sized so all chrome fits at once', INLINE_FRAME_HEIGHT.includes('dvh') && INLINE_FRAME_HEIGHT.includes('clamp'), INLINE_FRAME_HEIGHT)
 
+  // The dashboard toolbar: zoom + frame-style segments are pure and asserted.
+  const { dashboardZoomHeight, DASHBOARD_ZOOMS, WINDOW_SHELL_STYLES: SHELL2 } = client
+  step('zoom levels map to bounded heights (whole chrome, one screen)', DASHBOARD_ZOOMS.every(z => typeof dashboardZoomHeight(z) === 'string') && dashboardZoomHeight('fit') === INLINE_FRAME_HEIGHT && dashboardZoomHeight('S') === '300px' && dashboardZoomHeight('M') === '420px', DASHBOARD_ZOOMS.map(z => `${z}=${dashboardZoomHeight(z)}`).join(' '))
+  void SHELL2
+
+  // The model's hands: the overlay draws a HAND for the agent, not an arrow.
+  const { InteractionOverlay, resetOverlay: freshOverlay, applyInteraction } = client
+  let overlayState = freshOverlay()
+  overlayState = applyInteraction(overlayState, { seq: 1, at: 1, actor: 'agent', event: { type: 'click', x: 0.4, y: 0.5, button: 'left' } })
+  const handsHtml = renderToString(el(InteractionOverlay, { state: overlayState }))
+  step('the agent cursor renders as a hand (the model has hands)', handsHtml.includes('data-actor="agent"') && handsHtml.includes('M8 13V5.5'), handsHtml.slice(0, 160))
+  step('the agent hand carries an agent tag', handsHtml.includes('>agent<'))
+  let userOverlay = freshOverlay()
+  userOverlay = applyInteraction(userOverlay, { seq: 1, at: 1, actor: 'user', event: { type: 'click', x: 0.2, y: 0.3, button: 'left' } })
+  const userHtml = renderToString(el(InteractionOverlay, { state: userOverlay }))
+  step('a taken-over pointer renders the amber you-hand', userHtml.includes('data-actor="user"') && userHtml.includes('>you<'))
+
   // Single-frame fallback (Android Chrome cannot render multipart in an <img>).
   const fu = frameNowUrl('tok/en', 7)
   step('frameNowUrl targets the /frame route with token + nonce', fu.includes('/frame?token=tok%2Fen') && fu.includes('n=7'), fu)

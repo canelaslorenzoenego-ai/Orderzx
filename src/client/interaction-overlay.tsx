@@ -256,18 +256,20 @@ export function InteractionOverlay(props: InteractionOverlayProps): ReactNode {
 }
 
 /**
- * Two hands, two cursors. The agent is the blue arrow; a human who took over
- * is an amber open hand with a "you" tag — an observer watching the stream
- * can always tell WHOSE hand is on the mouse, which is the whole point of a
- * stream you can grab.
+ * Two hands on one mouse. The agent gets a BLUE HAND (not an arrow — the user
+ * asked for "the model's hands in the chrome"): the same pointing-hand glyph
+ * the human gets, in the agent's colour, with an "agent" tag and a press
+ * squash on every click. A human who took over is the amber hand with a "you"
+ * tag. An observer watching the stream can always tell WHOSE hand is on the
+ * mouse, which is the whole point of a stream you can grab.
  */
 function ActorCursor({ point, pressed }: { point: { x: number; y: number; actor: 'agent' | 'user' }; pressed: boolean }): ReactNode {
   if (point.actor === 'user') {
     return (
       <div style={cursorWrapStyles(point)} data-actor="user">
-        <svg width="22" height="22" viewBox="0 0 24 24" style={pressed ? cursorPressedStyles : cursorStyles}>
+        <svg width="26" height="26" viewBox="0 0 24 24" style={pressed ? cursorPressedStyles : cursorStyles}>
           <path
-            d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11l4.8 1.2c1.6.4 2.6 1.9 2.3 3.5l-.6 3a3.5 3.5 0 0 1-3.4 2.8H10a4 4 0 0 1-3.2-1.6L4 16.2a1.6 1.6 0 0 1 2.5-2L8 16z"
+            d={HAND_PATH}
             fill="rgba(210,153,34,0.95)"
             stroke="rgba(255,255,255,0.92)"
             strokeWidth="1.3"
@@ -280,18 +282,25 @@ function ActorCursor({ point, pressed }: { point: { x: number; y: number; actor:
   }
   return (
     <div style={cursorWrapStyles(point)} data-actor="agent">
-      <svg width="22" height="22" viewBox="0 0 24 24" style={pressed ? cursorPressedStyles : cursorStyles}>
+      <svg width="26" height="26" viewBox="0 0 24 24" style={pressed ? cursorPressedStyles : cursorStyles}>
         <path
-          d="M5 2 L19 12 L12 13.5 L15.5 21 L12 22.5 L8.5 15 L5 19 Z"
+          d={HAND_PATH}
           fill="rgba(56,139,253,0.95)"
           stroke="rgba(255,255,255,0.92)"
-          strokeWidth="1.4"
+          strokeWidth="1.3"
           strokeLinejoin="round"
         />
+        {/* wristband: whose hand, readable at a glance on a moving stream */}
+        <circle cx="11" cy="20.4" r="1.6" fill="rgba(255,255,255,0.95)" />
       </svg>
+      <span style={agentTagStyles}>agent</span>
     </div>
   )
 }
+
+/** One pointing-hand silhouette shared by both actors (24×24 viewBox). */
+const HAND_PATH =
+  'M8 13V5.5a1.5 1.5 0 0 1 3 0V11l4.8 1.2c1.6.4 2.6 1.9 2.3 3.5l-.6 3a3.5 3.5 0 0 1-3.4 2.8H10a4 4 0 0 1-3.2-1.6L4 16.2a1.6 1.6 0 0 1 2.5-2L8 16z'
 
 const youTagStyles: CSSProperties = {
   position: 'absolute',
@@ -304,6 +313,23 @@ const youTagStyles: CSSProperties = {
   color: '#d29922',
   background: 'rgba(20,14,2,0.82)',
   border: '1px solid rgba(210,153,34,0.5)',
+  borderRadius: 4,
+  padding: '1px 4px',
+  whiteSpace: 'nowrap',
+}
+
+/** The agent's tag: same chip as "you", in the agent's blue. */
+const agentTagStyles: CSSProperties = {
+  position: 'absolute',
+  left: 20,
+  top: 16,
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: '#58a6ff',
+  background: 'rgba(2,10,24,0.82)',
+  border: '1px solid rgba(88,166,255,0.5)',
   borderRadius: 4,
   padding: '1px 4px',
   whiteSpace: 'nowrap',

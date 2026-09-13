@@ -39,9 +39,9 @@ export type FrameStyle = (typeof FRAME_STYLE_OPTIONS)[number]
 export const WINDOW_SHELL_STYLES: CSSProperties = {
   borderRadius: 12,
   overflow: 'hidden',
-  border: '1px solid var(--dsw-border-color, rgba(128,128,128,0.28))',
-  background: 'var(--dsw-bg-secondary, #16161a)',
-  boxShadow: '0 12px 40px rgba(0,0,0,0.34), 0 2px 8px rgba(0,0,0,0.22)',
+  border: '1px solid var(--dsw-border-color, rgba(15,23,42,0.12))',
+  background: 'var(--dsw-bg-secondary, #ffffff)',
+  boxShadow: '0 10px 30px rgba(15,23,42,0.12), 0 2px 6px rgba(15,23,42,0.08)',
   display: 'flex',
   flexDirection: 'column',
   // FILL the parent column (panel body / inline chat box). Without this the
@@ -57,8 +57,8 @@ export const TITLEBAR_STYLES: CSSProperties = {
   alignItems: 'center',
   gap: 8,
   padding: '7px 10px',
-  background: 'var(--dsw-bg-tertiary, #1c1c22)',
-  borderBottom: '1px solid var(--dsw-border-color, rgba(128,128,128,0.2))',
+  background: 'var(--dsw-bg-tertiary, #f5f6f8)',
+  borderBottom: '1px solid var(--dsw-border-color, rgba(15,23,42,0.10))',
   flex: '0 0 auto',
   // The whole titlebar is the drag region for a future desktop shell; harmless
   // in the browser and it documents intent.
@@ -72,7 +72,7 @@ export const TAB_STRIP_STYLES: CSSProperties = {
   alignItems: 'stretch',
   gap: 4,
   padding: '4px 8px 0',
-  background: 'var(--dsw-bg-tertiary, #1c1c22)',
+  background: 'var(--dsw-bg-tertiary, #f5f6f8)',
   overflowX: 'auto',
   overflowY: 'hidden',
   flex: '0 0 auto',
@@ -96,9 +96,9 @@ export function tabStyles(active: boolean): CSSProperties {
     border: '1px solid transparent',
     borderBottom: 'none',
     borderRadius: '8px 8px 0 0',
-    color: active ? 'var(--dsw-text-primary, #e6e6ea)' : 'var(--dsw-text-tertiary, #8a8a94)',
-    background: active ? 'var(--dsw-bg-secondary, #16161a)' : 'transparent',
-    borderColor: active ? 'var(--dsw-border-color, rgba(128,128,128,0.28))' : 'transparent',
+    color: active ? 'var(--dsw-text-primary, #1f2329)' : 'var(--dsw-text-tertiary, #6b7280)',
+    background: active ? 'var(--dsw-bg-secondary, #ffffff)' : 'transparent',
+    borderColor: active ? 'var(--dsw-border-color, rgba(15,23,42,0.12))' : 'transparent',
     flex: '0 0 auto',
   }
 }
@@ -108,8 +108,8 @@ export const NAV_ROW_STYLES: CSSProperties = {
   alignItems: 'center',
   gap: 6,
   padding: '6px 8px',
-  background: 'var(--dsw-bg-secondary, #16161a)',
-  borderBottom: '1px solid var(--dsw-border-color, rgba(128,128,128,0.18))',
+  background: 'var(--dsw-bg-secondary, #ffffff)',
+  borderBottom: '1px solid var(--dsw-border-color, rgba(15,23,42,0.08))',
   flex: '0 0 auto',
 }
 
@@ -123,9 +123,9 @@ export const ADDRESS_BAR_STYLES: CSSProperties = {
   padding: '0 10px',
   borderRadius: 14,
   fontSize: 12,
-  background: 'var(--dsw-bg-tertiary, #20202a)',
-  border: '1px solid var(--dsw-border-color, rgba(128,128,128,0.2))',
-  color: 'var(--dsw-text-secondary, #b8b8c2)',
+  background: 'var(--dsw-bg-tertiary, #f2f3f5)',
+  border: '1px solid var(--dsw-border-color, rgba(15,23,42,0.10))',
+  color: 'var(--dsw-text-secondary, #4b5563)',
   overflow: 'hidden',
 }
 
@@ -149,9 +149,9 @@ export const STATUS_RAIL_STYLES: CSSProperties = {
   lineHeight: 1.3,
   flex: '0 0 auto',
   flexWrap: 'wrap',
-  borderTop: '1px solid var(--dsw-border-color, rgba(128,128,128,0.18))',
-  background: 'var(--dsw-bg-tertiary, #1c1c22)',
-  color: 'var(--dsw-text-tertiary, #8a8a94)',
+  borderTop: '1px solid var(--dsw-border-color, rgba(15,23,42,0.08))',
+  background: 'var(--dsw-bg-tertiary, #f5f6f8)',
+  color: 'var(--dsw-text-tertiary, #6b7280)',
 }
 
 /** Where the stream/synthetic frame renders. */
@@ -194,9 +194,9 @@ export function navButtonStyles(disabled: boolean, active = false): CSSPropertie
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.38 : 1,
     border: '1px solid transparent',
-    background: active ? 'var(--dsw-bg-hover, rgba(128,128,128,0.18))' : 'transparent',
-    borderColor: active ? 'var(--dsw-border-color, rgba(128,128,128,0.3))' : 'transparent',
-    color: active ? 'var(--dsw-text-primary, #e6e6ea)' : 'var(--dsw-text-secondary, #b8b8c2)',
+    background: active ? 'var(--dsw-bg-hover, rgba(15,23,42,0.08))' : 'transparent',
+    borderColor: active ? 'var(--dsw-border-color, rgba(15,23,42,0.16))' : 'transparent',
+    color: active ? 'var(--dsw-text-primary, #1f2329)' : 'var(--dsw-text-secondary, #4b5563)',
   }
 }
 
@@ -229,7 +229,7 @@ export function frameTierLabel(source: FrameSource): string {
 
 export function badgeStyles(tone: 'neutral' | 'live' | 'attention' | 'error'): CSSProperties {
   const palette = {
-    neutral: { fg: 'var(--dsw-text-tertiary, #8a8a94)', bg: 'rgba(128,128,128,0.14)' },
+    neutral: { fg: 'var(--dsw-text-tertiary, #6b7280)', bg: 'rgba(15,23,42,0.06)' },
     live: { fg: '#3fb950', bg: 'rgba(63,185,80,0.14)' },
     attention: { fg: '#d29922', bg: 'rgba(210,153,34,0.16)' },
     error: { fg: '#f85149', bg: 'rgba(248,81,73,0.16)' },
@@ -313,7 +313,7 @@ export function BrowserFrame(props: BrowserFrameProps): ReactNode {
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              color: 'var(--dsw-text-tertiary, #8a8a94)',
+              color: 'var(--dsw-text-tertiary, #6b7280)',
             }}
           >
             {props.title || props.url || 'new tab'}

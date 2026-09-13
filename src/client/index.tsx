@@ -59,7 +59,8 @@ export { BrowserCard, BootCard, ChallengeCard, describeTarget, type BrowserCardP
 export {
   InlineLiveFrame, inlineLiveDecision, activitySignature,
   INLINE_IDLE_COLLAPSE_MS, INLINE_CHECK_MS, INLINE_FRAME_HEIGHT,
-  type InlineMode, type InlineLiveDecision, type InlineLiveFrameProps,
+  dashboardZoomHeight, DASHBOARD_ZOOMS,
+  type InlineMode, type InlineLiveDecision, type InlineLiveFrameProps, type DashboardZoom,
 } from './inline-live.js'
 export { CARD_STYLES } from './card-styles.js'
 export { CardBoundary } from './card-boundary.js'

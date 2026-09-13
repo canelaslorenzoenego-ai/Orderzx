@@ -21,7 +21,7 @@ with your own fingerprint and IP: the one solve that always works.
 **Ready to install — one command:**
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.11/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.12/install.sh | bash
 ```
 
 It clones to `~/.orderzx/dsh-browser`, installs, builds, and prints the exact
@@ -149,7 +149,7 @@ pnpm run test:subagent-live  # 9 multi-session isolation steps
 ## Install
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.11/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.12/install.sh | bash
 ```
 
 Prefer source? Clone and `pnpm install && pnpm run build`, then wire the built
@@ -159,18 +159,37 @@ Release assets: `install.sh` + a sample replay reel.
 
 **Wire it in** — the harness loader (`@deepseek-ai/cordis-plugin-loader` +
 `cordis-plugin-include`) reads `cordis.yml` as a **bare list of entries**; each
-entry imports its `name` as a module specifier. Point `name` at the built file:
+entry imports its `name` as a module specifier. Mount **both sides** — the node
+plugin (tools, engine, routes) and the client bundle (capsule, cards,
+dashboard):
 
 ```yaml
+# node profile
 - id: dsh-browser
   name: file:///home/you/.orderzx/dsh-browser/lib/index.js
   config:
     engine:
       provider: patchright
+
+# web/client profile — the dsh.client.inject manifest in package.json lists
+# the host packages dsh-web injects alongside the bundle (react, dsh-client-*)
+- id: dsh-browser-client
+  name: '@dsh-community/dsh-browser/client'
 ```
 
 Not `plugins: [- path: …]` — the loader has no `path` key and no wrapper; a
-wrong-shaped entry silently never mounts. Config keys: [Configuration](#configuration).
+wrong-shaped entry silently never mounts. `playwright-core` is a runtime
+dependency (every provider needs it, CDP attach included); `patchright` — the
+default stealth engine — is an optional dependency, and the posture endpoint
+reports which driver is actually live. Config keys:
+[Configuration](#configuration).
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| No capsule at all | client bundle not mounted | mount the `dsh-browser-client` entry above; check the DSH devtools console for `dsh-browser-client` and that the `dsh.client.inject` packages resolved |
+| Capsule sits at `spinning-up` | no engine available | `npm i patchright` **in the profile directory**, or set `engine.provider: cdp` + `engine.cdpEndpoint` and launch Chrome yourself with `--remote-debugging-port=9222` |
+| Capsule fine, panel never opens | another plugin owns the dock | the panel auto-falls back to an overlay — if even that is missing, check `browser_status` in the conversation for the phase it is stuck on |
+| `/panel` route answers 501 | standalone bundle not built | run `npm run build:standalone` in the checkout (works on Node ≥ 20) |
 
 ## Configuration
 

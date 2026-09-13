@@ -1,3 +1,8 @@
+// Node 20 floor: tsdown gates on Promise.withResolvers (Node >= 22) at
+// startup; the polyfill must load in THIS process before defineConfig runs,
+// which a NODE_OPTIONS --require does not reliably reach. No-op on Node 22+.
+import './scripts/node20-polyfill.cjs'
+
 import { defineConfig } from 'tsdown'
 
 /**

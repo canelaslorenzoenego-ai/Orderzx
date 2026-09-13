@@ -16,27 +16,25 @@ else
 fi
 
 cd "$DEST"
-echo "→ installing dependencies"
+echo "→ installing dependencies (playwright-core runtime driver, patchright optional stealth engine)"
 npm ci --no-audit --no-fund
 echo "→ building server entry (lib/)"
 npx tsc -p tsconfig.json
 
-# The client/standalone bundles need the tsdown toolchain, which requires
-# Node >= 22. The plugin itself (lib/) builds and runs on Node >= 20, so on
-# older nodes we skip the panel bundles with a warning instead of dying
-# halfway through the install.
-NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
-if [ "$NODE_MAJOR" -ge 22 ]; then
-  echo "→ building client bundle + standalone panel"
-  npx tsc -p tsconfig.client.json
-  npx tsdown src/client/index.tsx --config tsdown.config.mjs --format cjs --platform browser --target es2022 --tsconfig tsconfig.client.json --out-dir .client-build --clean --sourcemap --logLevel warn
-  node scripts/build-client.mjs
-  npx tsdown --config tsdown.standalone.config.mjs
-  node scripts/build-standalone.mjs
+# Client + standalone panel bundles. tsdown's own engines field says Node >= 22,
+# but its only Node-22 dependency is Promise.withResolvers, which the tracked
+# scripts/node20-polyfill.cjs (imported by both tsdown configs) supplies — so
+# the bundles build on the plugin's documented floor, Node >= 20. A build
+# failure warns instead of dying: the plugin and its loopback panel API still
+# work without the rich bundle, but you lose the capsule/dashboard, so re-run
+# after fixing.
+echo "→ building client bundle + standalone panel"
+if npm run build:client && npm run build:standalone; then
+  echo "  ✓ lib/client.js + lib/standalone.html built"
 else
-  echo "⚠ Node $NODE_MAJOR: skipping client/standalone bundles (need Node >= 22)."
-  echo "  The plugin and its loopback panel API still work; the rich dashboard"
-  echo "  bundle needs a newer node. Re-run this script after upgrading to get it."
+  echo "⚠ client/standalone bundle build FAILED (node $(node -p process.versions.node))."
+  echo "  The plugin and its loopback panel API still work; the in-chat capsule,"
+  echo "  cards and dashboard bundle do not. Fix the error above and re-run."
 fi
 
 echo
@@ -44,13 +42,22 @@ echo "✓ Orderzx built at $DEST"
 echo
 echo "Wire it into your harness — cordis.yml is a BARE LIST of loader entries;"
 echo "the loader imports \`name\` as a module specifier (there is no \`path\` key"
-echo "and no \`plugins:\` wrapper):"
+echo "and no \`plugins:\` wrapper). Mount BOTH sides:"
 echo
+echo "  # node profile — tools, engine, routes:"
 echo "  - id: dsh-browser"
 echo "    name: file://$DEST/lib/index.js"
 echo "    config:"
 echo "      engine:"
 echo "        provider: patchright"
 echo
-echo "Then start a session: browser_start({ url: \"https://example.com\" })"
+echo "  # web/client profile — capsule, cards, dashboard (the dsh.client.inject"
+echo "  # manifest in package.json lists the host packages dsh-web provides):"
+echo "  - id: dsh-browser-client"
+echo "    name: '@dsh-community/dsh-browser/client'"
+echo "    # or by path when the package is not resolvable from the profile:"
+echo "    # name: file://$DEST/lib/client.js"
+echo
+echo "Then start a session — type /start in the composer, or call:"
+echo "browser_start({ url: \"https://example.com\" })"
 echo "Panel: GET /_dsh/dsh-browser/panel on the loopback fence."

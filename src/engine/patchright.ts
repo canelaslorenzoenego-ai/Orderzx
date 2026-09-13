@@ -44,6 +44,7 @@ import type {
   DebugTapEvent,
 } from './types.js'
 import { EngineError } from './types.js'
+import type { BrowserChannel } from '../protocol.js'
 import { applyDesktopView, attachDebugTap, type EmulateState } from './emulate.js'
 import {
   PRESETS,
@@ -186,20 +187,42 @@ export const patchrightProvider: EngineProviderAdapter = {
     }
     if (opts.proxy) launchOpts.proxy = { server: opts.proxy }
 
-    let context: any
-    let ownedBrowser: any
-    if (opts.userDataDir) {
-      // Persistent context: cookies/localStorage survive restarts, which also
-      // avoids the "brand-new incognito profile" signal.
-      context = await driver.mod.chromium.launchPersistentContext(opts.userDataDir, launchOpts)
-    } else {
-      ownedBrowser = await driver.mod.chromium.launch(launchOpts)
-      context = await ownedBrowser.newContext({
+    const attempt = async (channel: BrowserChannel): Promise<{ context: any; owned: any }> => {
+      const lo: Record<string, unknown> = { ...launchOpts, channel }
+      if (opts.userDataDir) {
+        // Persistent context: cookies/localStorage survive restarts, which also
+        // avoids the "brand-new incognito profile" signal.
+        return { context: await driver.mod.chromium.launchPersistentContext(opts.userDataDir, lo), owned: undefined }
+      }
+      const owned: any = await driver.mod.chromium.launch(lo)
+      const context = await owned.newContext({
         viewport: opts.viewport,
         locale: opts.locale ?? undefined,
         timezoneId: opts.timezone ?? undefined,
       })
+      return { context, owned }
     }
+
+    // Honest channel fallback: the default `chrome` channel needs a branded
+    // Chrome install. On machines without one, launch dies with "distribution
+    // 'chrome' is not found" — retry once on the driver's own Chromium so the
+    // default engine boots everywhere, and report the channel that ACTUALLY
+    // launched in the browser object and the posture (never the wished-for one).
+    let effectiveChannel: BrowserChannel = opts.channel
+    let launched: { context: any; owned: any }
+    try {
+      launched = await attempt(opts.channel)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (opts.channel !== 'chromium' && /distribution .* is not found|is not found at/i.test(message)) {
+        launched = await attempt('chromium')
+        effectiveChannel = 'chromium'
+      } else {
+        throw error
+      }
+    }
+    const context: any = launched.context
+    const ownedBrowser: any = launched.owned
 
     const pages = new Map<string, PatchrightPage>()
     let counter = 0
@@ -218,7 +241,7 @@ export const patchrightProvider: EngineProviderAdapter = {
 
     const browser: EngineBrowser = {
       provider: 'patchright',
-      channel: opts.channel,
+      channel: effectiveChannel,
       headless: opts.headless,
       pages: () => [...pages.values()],
       activePage: () => (activeId ? pages.get(activeId) : undefined),
@@ -251,7 +274,7 @@ export const patchrightProvider: EngineProviderAdapter = {
         await context.clearCookies(targets.map(c => ({ name: c.name, domain: c.domain, path: c.path })))
         return targets.length
       },
-      posture: () => buildPosture(driver, opts, preset),
+      posture: () => buildPosture(driver, { ...opts, channel: effectiveChannel }, preset),
       async close() {
         for (const page of pages.values()) page.disposeScreencast()
         pages.clear()

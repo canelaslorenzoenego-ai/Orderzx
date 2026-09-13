@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/dsh-browser",
-  "version": "0.2.0-rc.11",
+  "version": "0.2.0-rc.12",
   "description": "DeepSeek Harness plugin \u2014 a live, stealth-capable Chrome inside the conversation. Tiered frame transport, Patchright engine seam, four-tier CAPTCHA pipeline with interactive human handoff, and a page-owned browser panel the user can grab the mouse in. Tested against DSH 0.1.5-rc.2.",
   "license": "MIT",
   "keywords": [
@@ -102,10 +102,32 @@
       "resolution": "not exercised by the server/headless plugin entry"
     },
     "external": {
-      "patchright": "optional \u2014 engine provider `patchright`. Falls back to `playwright-core` against the system Chrome channel when absent.",
+      "patchright": "declared in optionalDependencies \u2014 engine provider `patchright` (default). Falls back to playwright-core when absent; posture().driver reports which one is live.",
       "cloakbrowser": "optional \u2014 engine provider `cloakbrowser`. Adds the `humanize` behavioral layer and source-level fingerprint patches.",
-      "note": "Inert documentation only; host packages are intentionally absent from dependencies and peerDependencies. Optional engines are resolved lazily at provider construction so a missing package degrades to a clear tool error instead of a boot failure."
+      "note": "playwright-core is a runtime dependency (every provider needs it, CDP attach included); patchright is an optional runtime dependency. Host packages stay intentionally absent from dependencies/peerDependencies \u2014 dsh-web injects them per the dsh.client.inject manifest. cloakbrowser remains lazily resolved: a missing optional engine degrades to a clear tool error, never a boot failure."
     }
+  },
+  "dsh.client.inject": {
+    "entry": "lib/client.js",
+    "id": "@dsh-community/dsh-browser",
+    "loader": "window.__ModuleLoader__",
+    "externals": [
+      "react",
+      "react-dom",
+      "@deepseek-ai/dsh-client-locale",
+      "@deepseek-ai/dsh-client-ui-conversation",
+      "@deepseek-ai/dsh-client-ui-renderer",
+      "@deepseek-ai/dsh-client-ui-session",
+      "@deepseek-ai/dsh-client-ui-slots",
+      "@deepseek-ai/dsh-client-ui-theme",
+      "@deepseek-ai/dsh-client-ui-tool"
+    ]
+  },
+  "dependencies": {
+    "playwright-core": "^1.56.0"
+  },
+  "optionalDependencies": {
+    "patchright": "^1.63.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
@@ -128,11 +150,11 @@
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.1",
     "esbuild": "^0.28.2",
-    "playwright-core": "^1.56.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",
+    "unrun": "^0.2.39",
     "ws": "^8.21.0"
   },
   "dsh": {

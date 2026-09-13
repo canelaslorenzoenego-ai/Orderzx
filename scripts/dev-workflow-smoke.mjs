@@ -170,6 +170,7 @@ try {
   for (const ch of ['s', '3', 'c', 'r', 'e', 't']) await gesture({ kind: 'key', key: ch, text: ch })
   const clicksBefore = clicked.count
   await click(linkBox)
+  await new Promise(res => setTimeout(res, 600)) // async-fetch settle, same as the replay assertions
   step('the demonstrated link click reached the fixture', clicked.count === clicksBefore + 1, `count ${clicked.count}`)
 
   const saved = await post(protocol.SESSION_ROUTE_PATH, { kind: 'set-recording', enabled: false }, drive)
@@ -196,6 +197,10 @@ try {
 
   const before = clicked.count
   const run = await runTool('browser_workflow', { session, action: 'run', name: 'probe-demo', vars: { [secretVar]: 's3cret' } })
+  // The anchor's click handler fires an async fetch POST — let it settle before
+  // counting, or the assertion races the network (latent since day one; the
+  // patchright driver's input timing made it deterministic).
+  await new Promise(res => setTimeout(res, 600))
   step('replay runs and the gesture lands again', run?.ok === true && clicked.count === before + 1, `run=${JSON.stringify(run).slice(0, 120)} count ${before}→${clicked.count}`)
 
   // The replayed typing actually typed (evaluate is policy-allowed here).
@@ -214,6 +219,7 @@ try {
     if (status?.ok === false) { done = status; break }
   }
   step('the background job finishes', done?.status === 'done', JSON.stringify(done).slice(0, 160))
+  await new Promise(res => setTimeout(res, 600)) // same async-fetch settle as above
   step('the job replayed the click too', clicked.count === before + 2, `count ${clicked.count} (expected ${before + 2})`)
 
   // ── 8. cancel path: a second job stopped mid-flight ───────────────────────

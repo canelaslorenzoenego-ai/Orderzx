@@ -7,7 +7,7 @@
 **A live, stealth-capable, autonomous Chrome inside your DeepSeek Harness conversation** — the `dsh-browser` plugin.
 
 [![ci](https://img.shields.io/github/actions/workflow/status/canelaslorenzoenego-ai/Orderzx/ci.yml?branch=main&style=flat-square&label=build)](https://github.com/canelaslorenzoenego-ai/Orderzx/actions)
-[![smoke tests](https://img.shields.io/badge/smoke_tests-610%2F610_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
+[![smoke tests](https://img.shields.io/badge/smoke_tests-615%2F615_%E2%9C%93-238636?style=flat-square)](#verified-end-to-end)
 [![release](https://img.shields.io/github/v/release/canelaslorenzoenego-ai/Orderzx?include_prereleases&style=flat-square)](https://github.com/canelaslorenzoenego-ai/Orderzx/releases)
 [![license](https://img.shields.io/badge/license-MIT-57606a?style=flat-square)](#license)
 
@@ -109,11 +109,13 @@ unknown fields and mismatched protocol numbers.
 | mcp | 13 | the bridge over a real spawned child's stdio |
 | live | 31 | real Chromium over CDP: start → stream → click → heal → clips → reels |
 | e2e | 15 | real host + real routes + real bundle, end to end |
+| mount | 5 | the REAL harness path: cordis loader + include + cordis.yml entry mounts us, tools land in ToolRuntime, dispose unregisters |
 
 ```bash
 pnpm test            # 564 static assertions, no browser needed
 pnpm run test:live   # 31 against a real Chrome (opt-in)
 pnpm run test:e2e    # 15: host + routes + client bundle + Chrome
+node scripts/dev-host-mount-smoke.mjs  # 5: real cordis loader mount
 ```
 
 ## Install
@@ -122,10 +124,25 @@ pnpm run test:e2e    # 15: host + routes + client bundle + Chrome
 curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/latest/download/install.sh | bash
 ```
 
-Prefer source? Clone and `pnpm install && pnpm run build`, then add `dsh-browser`
-to your harness plugin list. The script above does exactly this into
-`~/.orderzx/dsh-browser` and prints the cordis patch line for you.
+Prefer source? Clone and `pnpm install && pnpm run build`, then wire the built
+entry into your harness. The script above does exactly this into
+`~/.orderzx/dsh-browser` and prints the exact YAML for you.
 Release assets: `install.sh` + a sample replay reel.
+
+**Wire it in** — the harness loader (`@deepseek-ai/cordis-plugin-loader` +
+`cordis-plugin-include`) reads `cordis.yml` as a **bare list of entries**; each
+entry imports its `name` as a module specifier. Point `name` at the built file:
+
+```yaml
+- id: dsh-browser
+  name: file:///home/you/.orderzx/dsh-browser/lib/index.js
+  config:
+    engine:
+      provider: patchright
+```
+
+Not `plugins: [- path: …]` — the loader has no `path` key and no wrapper; a
+wrong-shaped entry silently never mounts. Config keys: [Configuration](#configuration).
 
 ## Configuration
 

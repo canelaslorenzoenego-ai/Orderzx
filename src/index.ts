@@ -99,8 +99,26 @@ export const name = PLUGIN_NAME
 /** Services this plugin's root fiber requires. */
 export const inject = ['tools']
 
-/** Cordis validates the user's YAML against this and applies defaults before `apply`. */
-export { Config as default }
+/**
+ * The plugin itself, as the DEFAULT export.
+ *
+ * This is load-bearing, not stylistic: the official harness loader
+ * (`@deepseek-ai/cordis-plugin-loader`) unwraps a plugin module with
+ * `exports.default ?? exports` and then demands a function, a class, or an
+ * `{ apply }` object. A default export of anything else — a config schema, a
+ * namespace re-export — makes the real harness reject the entry with
+ * "invalid plugin", while direct `ctx.plugin(apply)` tests keep passing and
+ * hide the break. Config rides along as a property so cordis still validates
+ * the user's YAML against it before `apply` runs.
+ */
+const DshBrowserPlugin = {
+  name: PLUGIN_NAME,
+  inject,
+  Config,
+  apply,
+}
+
+export { DshBrowserPlugin as default }
 
 /**
  * rc-line source worktrees augmented the legacy `cordis` package name while the

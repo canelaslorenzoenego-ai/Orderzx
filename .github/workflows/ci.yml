@@ -34,5 +34,10 @@ jobs:
         run: node scripts/dev-panel-smoke.mjs
       - name: mcp bridge suite
         run: node scripts/dev-mcp-smoke.mjs
+      # The mount suite is the canary for harness compatibility: it loads the
+      # built entry through the official cordis plugin-loader + plugin-include
+      # exactly as the DeepSeek Harness does.
+      - name: host-mount suite
+        run: node scripts/dev-host-mount-smoke.mjs
       # The live + e2e suites need a real Chromium and only ever touch a local
       # fixture; they run on maintainer machines, never against third-party sites.

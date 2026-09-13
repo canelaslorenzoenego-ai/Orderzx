@@ -78,6 +78,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"/>
 </body></html>`
 
 const MIME = { '.js': 'text/javascript', '.html': 'text/html; charset=utf-8' }
+const stats = { polls: [], sse: null, sseOpenedAt: 0, pollMode: false, paths: [] }
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost')
   if (url.pathname === '/') {
@@ -85,7 +86,60 @@ const server = createServer((req, res) => {
     res.end(HTML)
     return
   }
+  if (url.pathname === '/__stats') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify({ polls: stats.polls, sseOpenedAt: stats.sseOpenedAt, paths: stats.paths.slice(-12) }))
+    return
+  }
+  if (url.pathname === '/__mode') {
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', () => {
+      stats.pollMode = JSON.parse(body || '{}').poll === true
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end('{"ok":true}')
+    })
+    return
+  }
+  if (url.pathname === '/__emit') {
+    if (stats.sse === null) {
+      res.writeHead(503, { 'Content-Type': 'application/json' })
+      res.end('{"ok":false,"error":"no sse"}')
+      return
+    }
+    stats.sse.write('event: interaction\n'
+      + `data: ${JSON.stringify({ seq: 1, at: Date.now(), actor: 'agent', event: { type: 'click', x: 0.45, y: 0.55, button: 'left', label: 'search' } })}\n\n`)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end('{"ok":true}')
+    return
+  }
   if (req.method === 'GET' && url.pathname.startsWith('/_dsh/')) {
+    stats.paths.push(url.pathname)
+    if (url.pathname.endsWith('/interactions')) {
+      stats.sse = res
+      stats.sseOpenedAt = Date.now()
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' })
+      res.write(': ok\n\n')
+      return
+    }
+    if (url.pathname.endsWith('/stream')) {
+      // Multiparty grant: a buffering-WebView simulation returns 404 in poll
+      // mode so the client's stall probe flips it to single-frame polls.
+      if (stats.pollMode) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' })
+        res.end('buffered forever')
+        return
+      }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' })
+      res.end(PNG)
+      return
+    }
+    if (url.pathname.endsWith('/stream/frame')) {
+      stats.polls.push(Date.now())
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' })
+      res.end(PNG)
+      return
+    }
     res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' })
     res.end(PNG)
     return
@@ -142,6 +196,35 @@ try {
     }
     await page.context().close()
   }
+
+  // ── burst cadence (the rc.20 "see the model act" fix) ────────────────────
+  // A gesture arriving over the SSE channel must repaint immediately and
+  // tighten the poll cadence from the idle tier (500 ms at 2 fps) to the
+  // 200 ms floor for its 4 s window. Poll mode is forced by 404-ing the
+  // multipart stream (the buffering-WebView simulation).
+  await fetch(`http://127.0.0.1:${PORT}/__mode`, { method: 'POST', body: '{"poll":true}' })
+  const burstPage = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage()
+  await burstPage.goto(`http://127.0.0.1:${PORT}/`)
+  await burstPage.waitForSelector('[data-dsh-side-surface]', { timeout: 20000 })
+  await burstPage.waitForTimeout(6000) // stall probe (4 s) flips to polling
+  const readStats = async () => (await (await fetch(`http://127.0.0.1:${PORT}/__stats`)).json())
+  const s0 = await readStats()
+  ok(s0.sseOpenedAt > 0, 'burst: gesture channel (SSE) connected')
+  ok(s0.polls.length > 0, 'burst: stall probe fell back to single-frame polls')
+  await new Promise(resolve => setTimeout(resolve, 2500))
+  const s1 = await readStats()
+  const base = s1.polls.length - s0.polls.length
+  const emitAt = Date.now()
+  const emitted = await (await fetch(`http://127.0.0.1:${PORT}/__emit`, { method: 'POST' })).json()
+  ok(emitted.ok === true, 'burst: gesture event delivered to the panel')
+  await new Promise(resolve => setTimeout(resolve, 2500))
+  const s2 = await readStats()
+  const burst = s2.polls.length - s1.polls.length
+  ok(burst >= base + 4, `burst: gesture tightens cadence (${base} idle vs ${burst} bursting polls per 2.5 s)`)
+  const afterEmit = s2.polls.filter(t => t >= emitAt - 50)
+  const immediate = afterEmit.length > 0 ? afterEmit[0] - emitAt : Number.POSITIVE_INFINITY
+  ok(immediate < 450, `burst: repaint lands within one tick of the gesture (${Math.round(immediate)} ms)`)
+  await burstPage.context().close()
 } finally {
   await browser.close()
   server.close()

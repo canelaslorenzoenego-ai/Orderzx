@@ -146,6 +146,8 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
   const lastLoadAt = useRef<number>(0)
   // Multipart liveness probe: did the <img> EVER fire load for this grant?
   const loadedOnce = useRef(false)
+  /** Epoch ms of the FIRST go-live in multipart mode; 0 = not live yet. */
+  const liveSinceRef = useRef(0)
   const [streamMode, setStreamMode] = useState<'multipart' | 'poll'>('multipart')
   const [pollNonce, setPollNonce] = useState(0)
   /** Epoch ms until which the poll ticker runs at the burst floor. */
@@ -272,9 +274,15 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
   useEffect(() => {
     if (phase !== 'live' || streamMode !== 'multipart' || !token?.stream) return
     if (loadedOnce.current) return
+    // rc.21: deadline runs from the FIRST go-live. Keying the timer on the
+    // token let the stall re-grant loop reset it forever, so a stream that
+    // buffers (Android WebViews) re-granted endlessly instead of falling
+    // back to single-frame polls.
+    if (liveSinceRef.current === 0) liveSinceRef.current = Date.now()
+    const remaining = Math.max(250, STALL_MIN_MS - (Date.now() - liveSinceRef.current))
     const probe = setTimeout(() => {
       if (!loadedOnce.current) setStreamMode('poll')
-    }, STALL_MIN_MS)
+    }, remaining)
     return () => clearTimeout(probe)
   }, [phase, streamMode, token, heartbeat])
 
@@ -568,7 +576,11 @@ export function LiveViewport(props: LiveViewportProps): ReactNode {
             props.onFrameLoad()
             props.onFirstFrame?.()
           }}
-          onError={() => props.onFrameLoad()}
+          // rc.21: an ERROR is not liveness. Reporting it as a loaded frame
+          // (the old behavior) set loadedOnce/lastLoadAt, which disabled BOTH
+          // the poll fallback probe and stall detection — a dead or buffered
+          // stream then sat on a black frame claiming "live" forever.
+          // Errors stay silent: the stall probe falls back to polls instead.
         />
       ) : (
         props.placeholder

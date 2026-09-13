@@ -365,6 +365,7 @@ const dashCardFillStyles: CSSProperties = {
 const dashHeaderStyles: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
+  flexWrap: 'wrap',
   gap: 8,
   padding: '8px 10px',
   background: 'var(--dsw-bg-secondary, #ffffff)',
@@ -456,6 +457,7 @@ const dashControlsStyles: CSSProperties = {
 const segmentedWrapStyles: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
+  flexWrap: 'wrap',
   gap: 2,
   padding: 2,
   borderRadius: 8,
@@ -488,6 +490,7 @@ function segmentOptionStyles(active: boolean): CSSProperties {
 const dashNavStyles: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
+  flexWrap: 'wrap',
   gap: 4,
   padding: '5px 8px',
   background: 'var(--dsw-bg-secondary, #ffffff)',
@@ -526,6 +529,7 @@ const placeholderStyles: CSSProperties = {
 const dashStatusStyles: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
+  flexWrap: 'wrap',
   gap: 8,
   padding: '6px 12px',
   background: 'var(--dsw-bg-secondary, #ffffff)',

@@ -697,19 +697,20 @@ const el = React.createElement
   const {
     activitySignature, INLINE_FRAME_HEIGHT,
     WINDOW_SHELL_STYLES, overlaySurfaceStyles, panelAutoOpenAllowed,
-    sideDockPlacement, DOCK_MIN_VIEWPORT_WIDTH, drawerSurfaceStyles,
+    sideDockPlacement, DOCK_MIN_VIEWPORT_WIDTH, sideDockWidth, dockLeftClearance,
+    PHONE_DOCK_FRACTION, PANEL_LEFT_CLEARANCE,
     shouldRetractPanel, PANEL_RETRACT_IDLE_MS, createPanelStore, frameNowUrl,
     sessionMemory, BootCard,
   } = client
 
-  // Placement matrix: the dashboard lives on the SIDE at every width —
-  // a leased column where there is room, a right-edge drawer where there is not.
-  step('side: wide viewports get the leased dock column', sideDockPlacement(1280) === 'dock' && sideDockPlacement(DOCK_MIN_VIEWPORT_WIDTH) === 'dock')
-  step('side: phone viewports get the right-edge drawer', sideDockPlacement(DOCK_MIN_VIEWPORT_WIDTH - 1) === 'drawer' && sideDockPlacement(390) === 'drawer')
+  // Placement matrix: the dashboard EXTENDS the layout at every width — the
+  // dock leases the app frame's margin, so nothing is ever overlapped. On a
+  // phone the window becomes a two-column split instead of a slide-over.
+  step('side: the dock extends the layout at EVERY width (never an overlay)', sideDockPlacement(1280) === 'dock' && sideDockPlacement(DOCK_MIN_VIEWPORT_WIDTH - 1) === 'dock' && sideDockPlacement(390) === 'dock')
+  step('side: phones get a two-column split (54% dashboard, chat keeps the rest)', sideDockWidth(390, 720) === Math.round(390 * PHONE_DOCK_FRACTION) && sideDockWidth(390, 720) === 211)
+  step('side: the split is bounded so both columns stay usable', sideDockWidth(320, 900) === 180 && sideDockWidth(660, 900) === 356 && sideDockWidth(1280, 460) === 460)
+  step('side: the chat clearance floor scales on phones (lease holds, no overlay)', dockLeftClearance(390) === Math.round(390 * 0.42) && 390 - sideDockWidth(390, 720) >= dockLeftClearance(390) && dockLeftClearance(1280) === PANEL_LEFT_CLEARANCE)
   step('side: a boot auto-opens the side surface at EVERY width (it cannot conflict with the chat bar)', panelAutoOpenAllowed(390) === true && panelAutoOpenAllowed(1280) === true)
-  const drawer = drawerSurfaceStyles(false)
-  step('the drawer is a right-edge slide-over, full height', drawer.position === 'fixed' && drawer.right === 0 && drawer.top === 0 && drawer.bottom === 0 && drawer.width === 'min(86vw, 360px)')
-  step('the drawer springs in from the edge (extend animation)', drawerSurfaceStyles(true).transform === 'translateX(102%)' && drawer.transform === 'translateX(0)')
 
   // Auto-follow: idleness folds the side surface away; OFF pins it open.
   step('side: retracts when a model-opened surface goes idle', shouldRetractPanel({ origin: 'boot', idleMs: PANEL_RETRACT_IDLE_MS + 1, challengeBlocking: false, ownedByUser: false, follow: true }) === true)

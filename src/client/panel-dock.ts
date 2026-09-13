@@ -38,16 +38,39 @@ export const PANEL_DOCK_ATTRIBUTE = 'data-dsh-browser-panel-dock'
 export const DOCK_MIN_VIEWPORT_WIDTH = 900
 
 /**
- * Where the side dashboard sits at a given viewport width. Pure, for smoke.
- *
- *  - `dock`   — a leased right-hand column; the app frame is pushed over by
- *    exactly the panel width, so nothing is ever covered.
- *  - `drawer` — a fixed right-edge slide-over (phones: there is no margin to
- *    lease). Closed = fully hidden; the chat bar is untouched.
+ * Where the side dashboard sits. Always the SIDE, always EXTENDING: the dock
+ * leases the app frame's margin-right at every viewport width, so the chat
+ * column narrows and nothing is ever overlapped — on a phone the window
+ * simply becomes a two-column split (chat left, dashboard right).
  */
-export type SideDockPlacement = 'dock' | 'drawer'
+export type SideDockPlacement = 'dock'
 export function sideDockPlacement(viewportWidth: number): SideDockPlacement {
-  return viewportWidth >= DOCK_MIN_VIEWPORT_WIDTH ? 'dock' : 'drawer'
+  void viewportWidth
+  return 'dock'
+}
+
+/** Phone split: the dashboard's share of the viewport width. */
+export const PHONE_DOCK_FRACTION = 0.54
+
+/**
+ * The dock width at a viewport width. Wide screens honour the user/landscape
+ * width; phones get the split fraction (bounded so the chrome stays usable
+ * and the chat keeps a readable column). Pure, for the smoke suite.
+ */
+export function sideDockWidth(viewportWidth: number, desiredWidth: number): number {
+  if (viewportWidth >= DOCK_MIN_VIEWPORT_WIDTH) return desiredWidth
+  return Math.min(360, Math.max(180, Math.round(viewportWidth * PHONE_DOCK_FRACTION)))
+}
+
+/**
+ * How much chat column must remain for the dock to lease instead of overlay.
+ * The wide-screen floor is PANEL_LEFT_CLEARANCE; on a phone the split IS the
+ * layout, so the floor scales with the viewport (42% keeps the composer bar
+ * comfortably tappable beside the dock).
+ */
+export function dockLeftClearance(viewportWidth: number): number {
+  if (viewportWidth >= DOCK_MIN_VIEWPORT_WIDTH) return PANEL_LEFT_CLEARANCE
+  return Math.round(viewportWidth * 0.42)
 }
 
 /**
@@ -110,7 +133,9 @@ export function findDockElement(doc: Document): HTMLElement | null {
 export function claimPanelDock(doc: Document, widthPx: number): PanelDockLease {
   const element = findDockElement(doc)
   if (!element || doc.defaultView === null) return unavailable()
-  if (doc.defaultView.innerWidth < DOCK_MIN_VIEWPORT_WIDTH) return unavailable()
+  // No width gate: on phones the lease is what turns the window into the
+  // two-column split (chat left, dashboard right) — the dashboard EXTENDS
+  // the layout instead of overlapping it, at every viewport width.
 
   const prior = element.style.marginRight
   const priorTransition = element.style.transition
@@ -225,29 +250,6 @@ export function dockedSurfaceStyles(width: number, extending: boolean): CSSPrope
     flexDirection: 'column',
     zIndex: 60,
     pointerEvents: 'auto',
-  }
-}
-
-/**
- * The phone side surface: a right-edge DRAWER. Full height, thumb-reachable
- * width, slides in from the edge on the same spring as the dock. While open it
- * overlays the chat (there is no margin to lease at 390px); closed it is fully
- * hidden and the chat bar is 100% free.
- */
-export function drawerSurfaceStyles(extending: boolean): CSSProperties {
-  return {
-    position: 'fixed',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: 'min(86vw, 360px)',
-    transform: extending ? 'translateX(102%)' : 'translateX(0)',
-    transition: 'transform 240ms cubic-bezier(0.34, 1.28, 0.44, 1)',
-    display: 'flex',
-    flexDirection: 'column',
-    zIndex: 60,
-    pointerEvents: 'auto',
-    boxShadow: '-12px 0 40px rgba(15, 23, 42, 0.28)',
   }
 }
 

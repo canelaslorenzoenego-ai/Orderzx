@@ -92,6 +92,25 @@ try {
   step('garbage input gets a parse error, not a dead bridge', parseErr?.error?.code === -32700, JSON.stringify(parseErr?.error))
   const afterGarbage = await rpc('ping')
   step('the bridge still answers after garbage', afterGarbage.result !== undefined)
+
+  // A bare `null` line once CRASHED the bridge: JSON.parse accepts it, then
+  // `request.jsonrpc` threw a TypeError inside the readline callback (an
+  // uncaught exception). Primitives and arrays take the same path.
+  child.stdin.write('null\n5\n[1,2]\n')
+  const invalid = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), 3000)
+    pending.set(null, message => { clearTimeout(timer); resolve(message) })
+  })
+  step('a bare null line is an invalid-request error, not a crash', invalid?.error?.code === -32600, JSON.stringify(invalid?.error))
+  const afterNull = await rpc('ping')
+  step('the bridge still answers after null/number/array lines', afterNull.result !== undefined)
+
+  notify('notifications/cancelled')
+  const badArgs = await rpc('tools/call', { name: 'browser_press', arguments: {} })
+  step('bad tool args surface as an isError result, not a crash', badArgs.result?.isError === true && /key/.test(badArgs.result?.content?.[0]?.text ?? ''), JSON.stringify(badArgs.result).slice(0, 140))
+  const afterNotify = await rpc('ping')
+  step('an unsupported notification is never answered and the bridge stays sane', afterNotify.result !== undefined)
+  step('no crash traces on stderr', !/TypeError|Cannot read|Unhandled/i.test(stderrText), stderrText.slice(0, 160))
 } catch (error) {
   step(`bridge conversation failed: ${error.message} ${stderrText.slice(0, 200)}`, false)
 }

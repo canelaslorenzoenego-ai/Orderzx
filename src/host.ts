@@ -24,8 +24,10 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { ActionEntry, BrowserFrame, BootPhase, BrowserStatus, ChallengeRecord, ControlMessage, CookieMeta, FrameSource, SessionMessage, SessionSummary } from './protocol.js'
 import { InteractionTrace, type InteractionActor, type InteractionEvent, type InteractionRecord } from './interactions.js'
 import { DEFAULT_CONFIG } from './protocol.js'
@@ -156,6 +158,26 @@ export type ActionResult = { ok: true } | Refusal
 const MAX_CAPTURES_KEPT = 240
 /** Action-timeline entries kept per session. */
 const MAX_HISTORY_KEPT = 60
+
+/**
+ * The version this plugin advertises in `compat`. Single source of truth is
+ * the package.json sitting next to lib/ — the compiled PLUGIN_VERSION constant
+ * is only a fallback for exotic layouts. A hand-bumped constant drifting from
+ * package.json is exactly the class of bug the routes smoke's lockstep check
+ * exists to catch; reading the real manifest makes the drift impossible.
+ */
+let resolvedPluginVersion: string | undefined
+function pluginVersion(): string {
+  if (resolvedPluginVersion !== undefined) return resolvedPluginVersion
+  try {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { version?: unknown }
+    resolvedPluginVersion = typeof pkg.version === 'string' && pkg.version.length > 0 ? pkg.version : PLUGIN_VERSION
+  } catch {
+    resolvedPluginVersion = PLUGIN_VERSION
+  }
+  return resolvedPluginVersion
+}
 
 export class BrowserHostController {
   readonly access: AccessController
@@ -1232,7 +1254,7 @@ export class BrowserHostController {
 
   status(id: string): BrowserStatus {
     const session = this.#sessions.get(this.resolveRef(id) ?? id)
-    if (!session) return { phase: 'idle', sessions: this.listSessions(), compat: compatReport(PLUGIN_VERSION) }
+    if (!session) return { phase: 'idle', sessions: this.listSessions(), compat: compatReport(pluginVersion()) }
     const page = session.browser.activePage()
     const stats: FrameStats = session.frames.stats()
     const posture = session.browser.posture()
@@ -1297,7 +1319,7 @@ export class BrowserHostController {
         bytes: stats.bytes,
         lastCapturePath: session.lastCapturePath,
       },
-      compat: compatReport(PLUGIN_VERSION),
+      compat: compatReport(pluginVersion()),
       ...(session.owner === 'user' ? { takeover: { since: session.takeoverSince ?? Date.now(), by: session.challenge ? 'agent-handoff' : 'user' } } : {}),
       ...(session.challenge ? { challenge: session.challenge } : {}),
       stealth: {

@@ -174,7 +174,12 @@ export function identityProbeScript(identity: ElementIdentity): string {
     }
     if (!best || bestScore < 4) return null
     const r = best.getBoundingClientRect()
-    return { x: (r.x + r.width / 2) / window.innerWidth, y: (r.y + r.height / 2) / window.innerHeight }
+    return {
+      x: (r.x + r.width / 2) / window.innerWidth,
+      y: (r.y + r.height / 2) / window.innerHeight,
+      px: r.x + r.width / 2,
+      py: r.y + r.height / 2,
+    }
   })()`
 }
 
@@ -260,16 +265,21 @@ export async function replayWorkflowSteps(
           await page.goto(step.url, { waitUntil: 'domcontentloaded' })
           break
         case 'click': {
-          let center: { x: number; y: number } | null = null
+          let center: { x: number; y: number; px?: number; py?: number } | null = null
           if (step.identity) {
             try {
-              center = (await page.evaluateIsolated<{ x: number; y: number } | null>(identityProbeScript(step.identity))) ?? null
+              center = (await page.evaluateIsolated<{ x: number; y: number; px?: number; py?: number } | null>(identityProbeScript(step.identity))) ?? null
             } catch {
               center = null
             }
           }
           const viewport = page.viewport()
-          if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
+          // Prefer the probe's CSS-pixel center: denormalizing x/y through
+          // page.viewport() only matches when both sides share the same basis,
+          // and an attached browser's window is whatever size the user has.
+          if (center && Number.isFinite(center.px) && Number.isFinite(center.py)) {
+            await page.input.click(Math.round(center.px as number), Math.round(center.py as number))
+          } else if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
             await page.input.click(Math.round(center.x * viewport.width), Math.round(center.y * viewport.height))
           } else {
             fallbacks += 1

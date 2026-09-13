@@ -171,8 +171,11 @@ function main(): void {
       replyError(null, -32700, 'parse error')
       return
     }
-    if (request.jsonrpc !== '2.0' || typeof request.method !== 'string') {
-      replyError(request.id, -32600, 'invalid request')
+    // JSON.parse happily yields null, numbers, strings and arrays — a bare
+    // `null` line must be an invalid-request error, not a TypeError that
+    // kills the bridge (a readline callback throw is an uncaught exception).
+    if (request === null || typeof request !== 'object' || request.jsonrpc !== '2.0' || typeof request.method !== 'string') {
+      replyError(request !== null && typeof request === 'object' ? (request as JsonRpcRequest).id : null, -32600, 'invalid request')
       return
     }
     handle(request).catch(error => {

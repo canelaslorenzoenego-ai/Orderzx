@@ -28,7 +28,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import {
@@ -208,6 +208,10 @@ export class Routes implements RouteHandlers {
 
     // A capture grant is path-scoped and needs no live session.
     if (typeof body.path === 'string' && body.path.length > 0) {
+      // signCaptureToken THROWS on a relative path; an unhandled throw here
+      // would leave the response hanging (and crash a host that treats
+      // unhandled rejections as fatal). Bad input is a 400, never a throw.
+      if (!isAbsolute(body.path)) return this.#fail(res, 400, 'path must be absolute')
       const capture = await this.access.signCaptureToken(body.path)
       return this.#json(res, 200, { kind: 'capture', ...capture })
     }
@@ -570,16 +574,32 @@ export function validateControl(message: ControlMessage): { ok: true } | { ok: f
 // ── mounting ────────────────────────────────────────────────────────────────
 
 export function mountRoutes(webServer: WebServerMount, routes: RouteHandlers): () => void {
+  // An async handler that throws must still SETTLE the response: a `void`-ed
+  // rejection leaves the client hanging forever and, on hosts where unhandled
+  // rejections are fatal, takes the whole harness down. Every promise-returning
+  // handler is wired through this guard.
+  const settle = (res: ServerResponse) => (error: unknown): void => {
+    void error
+    if (res.headersSent || res.writableEnded) res.destroy()
+    else {
+      try {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({ error: 'internal route error' }))
+      } catch {
+        res.destroy()
+      }
+    }
+  }
   const disposers = [
     webServer.register({ kind: 'prefix', path: STREAM_ROUTE_PREFIX, handler: (req, res) => routes.handleStream(req, res) }),
-    webServer.register({ kind: 'prefix', path: CAPTURE_ROUTE_PREFIX, handler: (req, res) => void routes.handleCapture(req, res) }),
+    webServer.register({ kind: 'prefix', path: CAPTURE_ROUTE_PREFIX, handler: (req, res) => { routes.handleCapture(req, res).catch(settle(res)) } }),
     webServer.register({ kind: 'prefix', path: INTERACTIONS_ROUTE_PREFIX, handler: (req, res) => routes.handleInteractions(req, res) }),
-    webServer.register({ kind: 'exact', path: GRANT_ROUTE_PATH, handler: (req, res) => void routes.handleGrant(req, res) }),
-    webServer.register({ kind: 'exact', path: STATUS_ROUTE_PATH, handler: (req, res) => void routes.handleStatus(req, res) }),
-    webServer.register({ kind: 'exact', path: CONTROL_ROUTE_PATH, handler: (req, res) => void routes.handleControl(req, res) }),
-    webServer.register({ kind: 'exact', path: SESSION_ROUTE_PATH, handler: (req, res) => void routes.handleSession(req, res) }),
-    webServer.register({ kind: 'exact', path: CHALLENGE_ROUTE_PATH, handler: (req, res) => void routes.handleChallenge(req, res) }),
-    webServer.register({ kind: 'exact', path: PANEL_ROUTE_PATH, handler: (req, res) => void routes.handlePanel(req, res) }),
+    webServer.register({ kind: 'exact', path: GRANT_ROUTE_PATH, handler: (req, res) => { routes.handleGrant(req, res).catch(settle(res)) } }),
+    webServer.register({ kind: 'exact', path: STATUS_ROUTE_PATH, handler: (req, res) => { routes.handleStatus(req, res).catch(settle(res)) } }),
+    webServer.register({ kind: 'exact', path: CONTROL_ROUTE_PATH, handler: (req, res) => { routes.handleControl(req, res).catch(settle(res)) } }),
+    webServer.register({ kind: 'exact', path: SESSION_ROUTE_PATH, handler: (req, res) => { routes.handleSession(req, res).catch(settle(res)) } }),
+    webServer.register({ kind: 'exact', path: CHALLENGE_ROUTE_PATH, handler: (req, res) => { routes.handleChallenge(req, res).catch(settle(res)) } }),
+    webServer.register({ kind: 'exact', path: PANEL_ROUTE_PATH, handler: (req, res) => { routes.handlePanel(req, res).catch(settle(res)) } }),
   ]
   return () => {
     for (const dispose of disposers.reverse()) dispose()

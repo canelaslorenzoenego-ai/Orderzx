@@ -246,6 +246,34 @@ state.takeover = false
   const goodPath = join(dir, 'smoke-capture.png')
   writeFileSync(goodPath, Buffer.from('89504e470d0a1a0a', 'hex'))
 
+  // Hostile grant inputs must SETTLE — a throw out of an async void handler
+  // leaves the client hanging and can crash a host with fatal unhandled
+  // rejections (this was a real bug: signCaptureToken throws on relative
+  // paths). AbortSignal.timeout turns a regression into a failed step.
+  let rejections = 0
+  const onRej = () => { rejections += 1 }
+  process.on('unhandledRejection', onRej)
+  const relativeGrant = await fetch(`${base}${protocol.GRANT_ROUTE_PATH}`, {
+    method: 'POST',
+    headers: { Origin: ORIGIN, 'content-type': 'application/json' },
+    body: JSON.stringify({ path: 'relative.png' }),
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => undefined)
+  step('grant with a relative capture path is a settled 400 (no hang, no throw)', relativeGrant?.status === 400, `got ${relativeGrant?.status ?? 'HUNG'}`)
+  const traversalGrant = await req(protocol.GRANT_ROUTE_PATH, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path: '/tmp/../etc/passwd' }),
+  })
+  const traversalToken = traversalGrant.body?.token
+  const traversalFetch = traversalToken
+    ? await req(`${protocol.CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(traversalToken)}`)
+    : { status: 'no-token' }
+  step('a traversal-path capture token fetches nothing (containment at open time)', traversalFetch.status === 404, `got ${traversalFetch.status}`)
+  await new Promise(r => setTimeout(r, 100))
+  process.off('unhandledRejection', onRej)
+  step('hostile grant inputs cause no unhandled rejections', rejections === 0, `${rejections} rejections`)
+
   const good = await access.signCaptureToken(goodPath)
   const goodRes = await req(`${protocol.CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(good.token)}`)
   step('capture inside the cache dir serves image/png', goodRes.status === 200 && goodRes.headers.get('content-type') === 'image/png', `got ${goodRes.status} ${goodRes.headers.get('content-type')}`)

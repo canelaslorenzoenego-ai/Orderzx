@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/dsh-browser",
-  "version": "0.2.0-rc.7",
+  "version": "0.2.0-rc.8",
   "description": "DeepSeek Harness plugin \u2014 a live, stealth-capable Chrome inside the conversation. Tiered frame transport, Patchright engine seam, four-tier CAPTCHA pipeline with interactive human handoff, and a page-owned browser panel the user can grab the mouse in. Tested against DSH 0.1.5-rc.2.",
   "license": "MIT",
   "keywords": [
@@ -55,6 +55,7 @@
     "test": "node scripts/dev-tools-smoke.mjs && node scripts/dev-routes-static-smoke.mjs && node scripts/dev-frame-static-smoke.mjs && node scripts/dev-panel-smoke.mjs && node scripts/dev-mcp-smoke.mjs && node scripts/dev-host-mount-smoke.mjs",
     "test:live": "DSH_BROWSER_LIVE=1 node scripts/dev-live-smoke.mjs",
     "test:dispatch": "DSH_BROWSER_LIVE=1 node scripts/dev-dispatch-smoke.mjs",
+    "test:workflow": "DSH_BROWSER_LIVE=1 node scripts/dev-workflow-smoke.mjs",
     "build:standalone": "tsdown --config tsdown.standalone.config.mjs && node scripts/build-standalone.mjs",
     "test:e2e": "DSH_BROWSER_LIVE=1 node scripts/dev-e2e-smoke.mjs",
     "test:mount": "node scripts/dev-host-mount-smoke.mjs"

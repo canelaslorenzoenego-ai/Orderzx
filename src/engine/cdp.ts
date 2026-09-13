@@ -106,20 +106,46 @@ export const cdpProvider: EngineProviderAdapter = {
       const refs = new Map<string, { selector: string }>()
       const invalidateRefs = (): void => refs.clear()
       let screencastDispose: (() => Promise<void>) | undefined
+      // ── honest viewport ─────────────────────────────────────────────────
+      // An attached page has no emulated viewport: playwright's
+      // viewportSize() is null and the window is whatever size the user's
+      // real browser happens to be. A canned 1366×768 fallback silently
+      // breaks every normalized-coordinate consumer: panel gestures land on
+      // the wrong element, workflow replay clicks miss, and frame metadata
+      // mislabels capture dimensions. Measure the real window instead,
+      // refreshed on navigation (awaited — coordinates matter immediately
+      // after a load) and opportunistically on capture (throttled) so a
+      // user-side resize converges within a couple of seconds.
+      const FALLBACK_VIEWPORT = { width: 1366, height: 768 }
+      let cachedViewport: { width: number; height: number } | null = null
+      let viewportRefreshAt = 0
+      const refreshViewport = async (): Promise<void> => {
+        try {
+          const size = (await raw.evaluate('({ w: window.innerWidth, h: window.innerHeight })')) as { w?: number; h?: number } | null
+          const w = size?.w
+          const h = size?.h
+          if (typeof w === 'number' && typeof h === 'number' && Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+            cachedViewport = { width: Math.round(w), height: Math.round(h) }
+          }
+        } catch { /* mid-navigation: keep the last known size */ }
+      }
+      void refreshViewport()
       const page: EnginePage = {
         id,
         url: () => raw.url() as string,
         title: async () => (await raw.title()) as string,
-        viewport: () => (raw.viewportSize() as { width: number; height: number } | null) ?? { width: 1366, height: 768 },
+        viewport: () => (raw.viewportSize() as { width: number; height: number } | null) ?? cachedViewport ?? FALLBACK_VIEWPORT,
         goto: async (url, o) => {
           invalidateRefs()
           await raw.goto(url, { timeout: o?.timeoutMs ?? 30_000, waitUntil: o?.waitUntil ?? 'domcontentloaded' })
+          await refreshViewport()
         },
         navigate: async action => {
           invalidateRefs()
           if (action === 'stop') return void (await raw.evaluate('window.stop()').catch(() => undefined))
           const m = action === 'back' ? 'goBack' : action === 'forward' ? 'goForward' : 'reload'
           await raw[m]({ waitUntil: 'domcontentloaded' })
+          await refreshViewport()
         },
         close: async () => {
           await screencastDispose?.().catch(() => undefined)
@@ -175,14 +201,20 @@ export const cdpProvider: EngineProviderAdapter = {
           const box = await raw.locator(entry.selector).first().boundingBox().catch(() => null)
           return box ?? undefined
         },
-        capture: async o => new Uint8Array((await raw.screenshot({
+        capture: async o => {
+          if (Date.now() - viewportRefreshAt > 2000) {
+            viewportRefreshAt = Date.now()
+            void refreshViewport()
+          }
+          return new Uint8Array((await raw.screenshot({
           type: o?.format === 'jpeg' ? 'jpeg' : 'png',
           quality: o?.format === 'jpeg' ? o.quality ?? 72 : undefined,
           fullPage: o?.fullPage ?? false,
           caret: 'hide',
           animations: 'allow',
           timeout: 8_000,
-        })) as Buffer),
+        })) as Buffer)
+        },
         input: {
           pointerMove: async (x, y) => raw.mouse.move(x, y),
           pointerDown: async (x, y, b = 'left') => { await raw.mouse.move(x, y); await raw.mouse.down({ button: b }) },

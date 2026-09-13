@@ -43,6 +43,7 @@ import {
   type PanelDockLease,
 } from './panel-dock.js'
 import { BrowserFrame, FRAME_STYLE_CHROME, FRAME_STYLE_OPTIONS, type FrameStyle } from './browser-frame.js'
+import { activitySignature } from './inline-live.js'
 import { LiveViewport, useStreamSession, type StreamSession } from './live-viewport.js'
 import { installCapsuleKeyframes } from './status-capsule.js'
 import { bootLabel, reducePhase, reduceStatus, resetBoot, shouldAutoOpen, type BootState } from './boot-sequence.js'
@@ -50,7 +51,7 @@ import { captureUrl, requestCaptureGrant, sendChallengeOutcome, sendControl, sen
 
 // ── store ───────────────────────────────────────────────────────────────────
 
-/** Below this viewport width the panel becomes a full-width sheet. */
+/** Below this viewport width the panel becomes a bottom sheet (chat stays visible above it). */
 export const PANEL_NARROW_PX = 760
 
 export interface PanelRequest {
@@ -71,12 +72,20 @@ export interface PanelStore {
   /** Open only if nothing is open, so a settle never replaces a deliberate open. */
   openIfIdle(request: PanelRequest): boolean
   close(): void
+  /**
+   * The user pressed ×. Records the browser session the dismissal applies to:
+   * auto-open stays suppressed for THAT search, and the next `browser_start`
+   * (a different browserSession) re-arms it. "I can close it" has to mean
+   * something — a panel that reopens two polls later is not closable.
+   */
+  closeByUser(browserSession?: string): void
   /** True while the panel is open (read by the capsule, which hides itself). */
   isOpen(): boolean
 }
 
 export function createPanelStore(): PanelStore {
   let current: PanelRequest | undefined
+  let closedAgainst: string | undefined
   const listeners = new Set<Listener>()
   const emit = (): void => {
     for (const listener of [...listeners]) listener()
@@ -90,17 +99,30 @@ export function createPanelStore(): PanelStore {
     open(request) {
       const same = current?.sessionId === request.sessionId && current?.browserSession === request.browserSession
       if (same && current?.origin === request.origin) return false
+      // Explicit opens (capsule tap, card tap, challenge) always win — and clear
+      // any dismissal, since the user is re-opening it themselves.
+      closedAgainst = undefined
       current = request
       emit()
       return true
     },
     openIfIdle(request) {
+      if (closedAgainst !== undefined) {
+        if (closedAgainst === request.browserSession) return false // user dismissed this search
+        closedAgainst = undefined // a NEW search supersedes the dismissal
+      }
       if (current !== undefined) return false
       current = request
       emit()
       return true
     },
     close() {
+      if (current === undefined) return
+      current = undefined
+      emit()
+    },
+    closeByUser(browserSession) {
+      closedAgainst = browserSession ?? current?.browserSession
       if (current === undefined) return
       current = undefined
       emit()
@@ -123,10 +145,37 @@ export function usePanelRequest(): PanelRequest | undefined {
 
 // ── host ────────────────────────────────────────────────────────────────────
 
+/**
+ * Auto-retract: a model-opened panel folds itself away once the model stops
+ * searching ("by models, if they are not searching"). The panel is a spotlight
+ * on activity, not a permanent tenant of the screen.
+ *
+ * Never retracts when:
+ *  - the user opened it themselves (capsule/challenge/manual origins) — they
+ *    asked for it, only they may dismiss it;
+ *  - a blocking challenge is waiting — the user is needed;
+ *  - the user owns the pointer (takeover) — retracting mid-drive is sabotage.
+ */
+export const PANEL_RETRACT_IDLE_MS = 15_000
+export const PANEL_RETRACT_CHECK_MS = 5_000
+
+export function shouldRetractPanel(input: {
+  origin: PanelRequest['origin']
+  idleMs: number
+  challengeBlocking: boolean
+  ownedByUser: boolean
+}): boolean {
+  if (input.origin !== 'boot' && input.origin !== 'card') return false
+  if (input.challengeBlocking || input.ownedByUser) return false
+  return input.idleMs >= PANEL_RETRACT_IDLE_MS
+}
+
 export interface PanelHost {
   open(request: PanelRequest): boolean
   openIfIdle(request: PanelRequest): boolean
   close(): void
+  /** User-driven close: suppresses auto-reopen for this browser session. */
+  closeByUser(browserSession?: string): void
   dispose(): void
 }
 
@@ -156,7 +205,7 @@ export function mountBrowserPanelHost(options: PanelHostOptions = {}): PanelHost
   if (!ownerDocument) {
     // Headless/SSR: nothing to mount. Return an inert handle rather than
     // throwing, so the client entry does not need a typeof guard at every call.
-    return { open: () => false, openIfIdle: () => false, close() {}, dispose() {} }
+    return { open: () => false, openIfIdle: () => false, close() {}, closeByUser() {}, dispose() {} }
   }
 
   const store = options.store ?? browserPanelStore
@@ -204,6 +253,9 @@ export function mountBrowserPanelHost(options: PanelHostOptions = {}): PanelHost
     },
     close() {
       if (!destroyed) store.close()
+    },
+    closeByUser(browserSession) {
+      if (!destroyed) store.closeByUser(browserSession)
     },
     dispose() {
       destroy()
@@ -320,6 +372,41 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     if (request.origin === 'challenge') return // already opened for this reason
     store.open({ ...request, origin: 'challenge' })
   }, [boot.challenge, request, store])
+
+  // ── auto-retract: fold away when the model stops searching ────────────────
+  const lastActivity = useRef<{ sig: string; at: number } | null>(null)
+  useEffect(() => {
+    const sig = activitySignature(status)
+    if (sig === null) return
+    const prev = lastActivity.current
+    if (prev === null || prev.sig !== sig) lastActivity.current = { sig, at: Date.now() }
+  }, [status])
+
+  const retractView = useRef({ status, boot, request })
+  useEffect(() => {
+    retractView.current = { status, boot, request }
+  }, [status, boot, request])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      // No status yet → no evidence of idleness; a slow boot must not be
+      // retracted before it ever rendered a frame.
+      if (lastActivity.current === null) return
+      const view = retractView.current
+      const idleMs = Date.now() - lastActivity.current.at
+      if (
+        shouldRetractPanel({
+          origin: view.request.origin,
+          idleMs,
+          challengeBlocking: view.boot.challenge?.blocking === true,
+          ownedByUser: view.status?.takeover !== undefined,
+        })
+      ) {
+        store.close()
+      }
+    }, PANEL_RETRACT_CHECK_MS)
+    return () => clearInterval(timer)
+  }, [store])
 
   // ── dock lease: this is the "dashboard extends" part ──────────────────────
   const effectiveWidth = desiredPanelWidth(
@@ -634,7 +721,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
               </option>
             ))}
           </select>
-          <button type="button" style={iconButtonStyles} aria-label="close panel" onClick={() => store.close()}>
+          <button type="button" style={iconButtonStyles} aria-label="close panel" title="close — it stays closed until the next browser start" onClick={() => store.closeByUser(request.browserSession)}>
             ×
           </button>
         </header>
@@ -674,6 +761,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
           >
             <LiveViewport
               streamUrl={session.streamUrl}
+              pollUrl={session.pollUrl}
               phase={session.phase}
               frameSource={status?.frames?.source ?? 'screenshot'}
               driving={driving}
@@ -819,20 +907,23 @@ const dockedCardStyles: CSSProperties = {
 
 function overlayCardStyles(width: number | '100%'): CSSProperties {
   if (width === '100%') {
-    // Phone sheet: edge-to-edge, full height, no floating-card affordances.
-    // dvh so a mobile browser's collapsing URL bar cannot crop the footer.
+    // Phone bottom sheet: fills the sheet surface (62dvh, see panel-dock), NOT
+    // the whole screen — the conversation stays visible and usable above it.
+    // The surface is pointer-transparent; the card opts back in.
     return {
       width: '100%',
       maxWidth: '100vw',
-      height: '100dvh',
+      height: '100%',
       display: 'flex',
       flexDirection: 'column',
       minHeight: 0,
-      borderRadius: 0,
+      pointerEvents: 'auto',
+      borderRadius: '16px 16px 0 0',
       overflow: 'hidden',
       background: 'var(--dsw-bg-primary, #101014)',
-      border: 'none',
-      boxShadow: 'none',
+      border: '1px solid var(--dsw-border-color, rgba(128,128,128,0.24))',
+      borderBottom: 'none',
+      boxShadow: '0 -14px 44px rgba(0,0,0,0.5)',
       color: 'var(--dsw-text-primary, rgba(255,255,255,0.92))',
       font: 'inherit',
     }

@@ -355,6 +355,50 @@ const run = (tools, name, args = {}) => tools[name].execute(args, makeExec(name,
   step('navigate returns the host verdict', result?.ok === true, JSON.stringify(result).slice(0, 140))
 }
 
+// ── video delivery: a specific video must reach the CHAT, not a description ──
+
+{
+  const { videoDeliveryHint } = await import(pathToFileURL(join(root, 'lib', 'protocol.js')).href)
+  const hits = [
+    'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    'https://m.youtube.com/watch?v=x',
+    'https://youtu.be/dQw4w9WgXcQ',
+    'https://www.youtube.com/shorts/abc123',
+    'https://www.tiktok.com/@user/video/7123456789',
+    'https://www.instagram.com/reel/CxYz123/',
+    'https://www.instagram.com/p/CxYz123/',
+  ]
+  const misses = [
+    'https://www.youtube.com/results?search_query=cats',
+    'https://www.tiktok.com/search?q=cats',
+    'https://www.instagram.com/explore/',
+    'https://example.com/watch?v=x',
+    'https://notyoutube.com/watch?v=x',
+    'not a url',
+    undefined,
+  ]
+  step('videoDeliveryHint fires on every video-page shape', hits.every(url => typeof videoDeliveryHint(url) === 'string'), String(hits.find(url => typeof videoDeliveryHint(url) !== 'string')))
+  step('videoDeliveryHint stays silent on search/feed/unrelated pages', misses.every(url => videoDeliveryHint(url) === undefined), String(misses.find(url => videoDeliveryHint(url) !== undefined)))
+  const hint = videoDeliveryHint(hits[0]) ?? ''
+  step('the hint names browser_clip + the verbatim chatLine contract', hint.includes('browser_clip') && hint.includes('VERBATIM'), hint.slice(0, 120))
+}
+
+{
+  const { tools } = build({}, { pageOptions: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } })
+  const nav = await run(tools, TOOL_NAMES.navigate, { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })
+  step('navigate landing on a video page carries the delivery contract', typeof nav?.videoDelivery === 'string' && nav.videoDelivery.includes('browser_clip'), JSON.stringify(nav).slice(0, 140))
+  const obs = await run(tools, TOOL_NAMES.observe, {})
+  step('observe on a video page carries the delivery contract', typeof obs?.videoDelivery === 'string', JSON.stringify(obs?.url))
+  const click = await run(tools, TOOL_NAMES.click, { ref: 'e12' })
+  step('click landing on a video page carries the delivery contract', typeof click?.videoDelivery === 'string')
+}
+
+{
+  const { tools } = build()
+  const nav = await run(tools, TOOL_NAMES.navigate, { url: 'https://example.com/next' })
+  step('non-video pages carry no videoDelivery field', nav?.videoDelivery === undefined, JSON.stringify(nav).slice(0, 140))
+}
+
 // ── tabs ────────────────────────────────────────────────────────────────────
 
 {

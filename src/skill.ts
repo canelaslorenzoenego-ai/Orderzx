@@ -116,6 +116,15 @@ Two facts worth knowing:
 - A label is unique per live browser; a duplicate gets a numeric suffix (read \`label\` from the start result, do not assume).
 - The panel shows one custom tab per browser; the user can watch any of them and take over its pointer independently.
 
+## Delivering a specific video (YouTube / TikTok / Instagram)
+
+When the user asks for a SPECIFIC video ("find <x> on TikTok and send it to me"), the deliverable is the VIDEO ITSELF in the chat — not a description, not a bare link:
+
+1. Search on the platform: YouTube → navigate to \`https://www.youtube.com/results?search_query=<url-encoded query>\`. TikTok → \`https://www.tiktok.com/search?q=<query>\`. Instagram → search needs a logged-in profile; if a login wall or challenge appears, report it honestly and stop (never defeat access controls).
+2. \`browser_observe\`, then click the result whose title matches the request. Verify where you landed: a video page is \`youtube.com/watch?v=…\` / \`youtu.be/…\` / \`/shorts/…\`, \`tiktok.com/@user/video/…\`, or \`instagram.com/reel/…\`. When you are on one, the navigate/observe/click result carries a \`videoDelivery\` field — treat it as the delivery contract.
+3. Let playback start, then call \`browser_clip\` — it records the playing video and delivers the clip to the session and the chat.
+4. Paste the returned \`chatLine\` into your reply VERBATIM. Never claim you sent the video without a successful \`browser_clip\`.
+
 ## The user sees everything
 
 Every gesture is streamed to the panel separately from the frames: your pointer path, each click's exact coordinate, the element you targeted (outlined before the click lands), scroll deltas, swipes, and keystroke COUNTS (never text — typed secrets are not recorded anywhere in the trace). Act as if watched, because you are. This is also why refusals and approvals are surfaced verbatim: the timeline drawer shows the user each action, its outcome, and its refusal reason.

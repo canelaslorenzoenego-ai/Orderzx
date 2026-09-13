@@ -30,9 +30,23 @@ export const PANEL_DOCK_ATTRIBUTE = 'data-dsh-browser-panel-dock'
 
 /**
  * Below this viewport width there is no room for a side-by-side layout, so the
- * panel goes full-bleed as an overlay instead of stealing margin.
+ * panel becomes a bottom sheet instead of stealing margin — and the PRIMARY
+ * watch surface on phones is the inline live frame in the chat itself
+ * (inline-live.tsx), not the panel.
  */
 export const DOCK_MIN_VIEWPORT_WIDTH = 900
+
+/**
+ * Should the panel auto-open at this viewport width? Pure, for the smoke suite.
+ *
+ * On narrow screens the answer is NO: auto-opening a sheet over the
+ * conversation is exactly the "it just covers the chat" complaint. The inline
+ * frame already shows the search live in-chat; the panel opens on an explicit
+ * tap (capsule or card) only.
+ */
+export function panelAutoOpenAllowed(viewportWidth: number): boolean {
+  return viewportWidth >= DOCK_MIN_VIEWPORT_WIDTH
+}
 
 /** Never push the app frame over by more than this fraction of the viewport. */
 export const DOCK_MAX_FOREIGN_FRACTION = 0.62
@@ -212,16 +226,23 @@ export function dockedSurfaceStyles(width: number, extending: boolean): CSSPrope
  */
 export function overlaySurfaceStyles(width: number, narrow = false): CSSProperties {
   if (narrow) {
+    // Bottom sheet, NOT a full-screen cover. The conversation stays visible and
+    // tappable above the sheet — on a phone the panel still "extends" the
+    // dashboard instead of replacing it. pointer-events live on the card only;
+    // the surface above it is see-through AND touch-through.
     return {
       position: 'fixed',
-      inset: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      top: 'auto',
+      height: '62dvh',
       display: 'flex',
-      alignItems: 'stretch',
-      justifyContent: 'stretch',
-      background: 'var(--dsw-bg-primary, #101014)',
+      flexDirection: 'column',
+      justifyContent: 'flex-end',
+      background: 'transparent',
       zIndex: 60,
-      pointerEvents: 'auto',
-      paddingTop: 'env(safe-area-inset-top, 0px)',
+      pointerEvents: 'none',
       paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       paddingLeft: 'env(safe-area-inset-left, 0px)',
       paddingRight: 'env(safe-area-inset-right, 0px)',

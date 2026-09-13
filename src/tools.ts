@@ -28,7 +28,7 @@ import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from './json-value.js'
 import type { BrowserHostController } from './host.js'
 import { probeEngine } from './engine/index.js'
-import { CAPTURE_ROUTE_PREFIX, FRAME_SOURCES, TOOL_NAMES } from './protocol.js'
+import { CAPTURE_ROUTE_PREFIX, FRAME_SOURCES, TOOL_NAMES, videoDeliveryHint } from './protocol.js'
 import type { ClipRef, FrameSource } from './protocol.js'
 import { saveClipManifest, saveReel } from './capture-store.js'
 import { captionOfEvent } from './interactions.js'
@@ -304,6 +304,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           elementCount: { type: 'number' },
           truncated: { type: 'boolean' },
           challenge: challengeSchema,
+          videoDelivery: { type: 'string', description: 'Present when the observed URL is a video page (YouTube/TikTok/Instagram) — the contract for delivering the video into the chat via browser_clip.' },
           siteTools: { type: 'boolean' },
           viewport: {
             type: 'object', additionalProperties: false,
@@ -328,7 +329,13 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       const target = resolveTarget(host, args.session)
       if (!target.ok) return refusalValue(target) as never
       const result = await observe(host, target.sessionId, target.page, vision, exec, { capture: args.capture !== false })
-      return result as never
+      // The video-delivery reminder rides on observe too: the model usually
+      // lands on video pages via clicks/search, and observe is what it reads
+      // afterwards. Deterministic and additive — same hint the navigate and
+      // click results carry.
+      const observedUrl = (result as { url?: unknown }).url
+      const hint = videoDeliveryHint(typeof observedUrl === 'string' ? observedUrl : undefined)
+      return (hint ? { ...(result as object), videoDelivery: hint } : result) as never
     },
   })
 
@@ -438,6 +445,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           point: { type: 'object', additionalProperties: false, properties: { x: { type: 'number' }, y: { type: 'number' } } },
           navigated: { type: 'boolean' },
           challenge: challengeSchema,
+          videoDelivery: { type: 'string', description: 'Present when the click landed on a video page (YouTube/TikTok/Instagram) — the contract for delivering the video into the chat via browser_clip.' },
           capturePath: { type: 'string' },
           image: imageResultSchema,
           refused: { type: 'string' },
@@ -543,17 +551,20 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       const after = await captureAfter(host, sessionId, page, vision, exec)
       acted(sessionId, TOOL_NAMES.click, `click ${label}`)
 
+      const landed = page.url()
+      const hint = videoDeliveryHint(landed)
       return {
         ok: true,
-        url: page.url(),
+        url: landed,
         target: label,
         ...(healedFrom === undefined ? {} : { healedFrom }),
         point: { x: Math.round(point.x), y: Math.round(point.y) },
-        navigated: beforeUrl !== page.url(),
+        navigated: beforeUrl !== landed,
         challenge: challengeForModel(challenge),
         // `after` carries title (and capturePath/image when produced); listing
         // title again before the spread would be overwritten silently.
         ...after,
+        ...(hint ? { videoDelivery: hint } : {}),
       } as never
     },
   })
@@ -755,7 +766,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       action: { type: 'string', description: 'back | forward | reload | stop.' },
       waitUntil: { type: 'string', description: 'domcontentloaded (default) | load | networkidle.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, url: { type: 'string' }, title: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, url: { type: 'string' }, title: { type: 'string' }, challenge: challengeSchema, videoDelivery: { type: 'string', description: 'Present when the resulting URL is a video page on YouTube/TikTok/Instagram — the contract for delivering the video into the chat via browser_clip.' }, refused: { type: 'string' },
           owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
@@ -779,7 +790,9 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       }
       const challenge = await detectChallenge(page)
       if (challenge.present && challenge.blocking) host.recordChallenge(sessionId, toRecord(challenge, page.url()))
-      return { ok: true, url: page.url(), title: await page.title().catch(() => ''), challenge: challengeForModel(challenge) } as never
+      const landedUrl = page.url()
+      const hint = videoDeliveryHint(landedUrl)
+      return { ok: true, url: landedUrl, title: await page.title().catch(() => ''), challenge: challengeForModel(challenge), ...(hint ? { videoDelivery: hint } : {}) } as never
     },
   })
 

@@ -1,14 +1,17 @@
 /**
  * Inline tool cards.
  *
- * Deliberately compact: one line, no imagery. A 5 fps stream thumbnail in the
- * conversation is noise, burns context, and duplicates what the panel shows far
- * better. The card's job is to say WHAT happened and to be the handle that opens
- * the panel.
+ * The action cards stay compact one-liners: their job is to say WHAT happened
+ * and to be a handle into the browser. The BOOT card is different since the
+ * user asked for the screen "directly in chat": it extends downward with the
+ * inline live frame (see inline-live.tsx) — the chat dashboard grows to show
+ * the whole chrome window while the model searches, and collapses when it
+ * stops. Only the CURRENT session's boot card hosts the frame; superseded
+ * cards shrink back to their one-line readout.
  *
  * Three cards cover the five registered tools:
  *
- *   BootCard      browser_start — phase readout, session id, auto-open trigger.
+ *   BootCard      browser_start — phase readout, session id, inline live frame.
  *   BrowserCard   browser_observe / browser_click — URL, action target, badges.
  *   ChallengeCard browser_challenge / browser_handoff — vendor, state, and an
  *                 explicit "agent is paused, you are needed" affordance.
@@ -24,12 +27,13 @@
  * @module @dsh-community/dsh-browser/client/cards
  */
 
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { CARD_TOOLS } from '../protocol.js'
 import { CARD_STYLES } from './card-styles.js'
 import { bootLabel, reduceMeta, resetBoot, type BootState } from './boot-sequence.js'
+import { InlineLiveFrame } from './inline-live.js'
 import { sessionMemory, shortenUrl, type HydratedMeta } from './meta-hydrate.js'
 
 export interface BrowserCardProps extends ToolCallViewProps {
@@ -57,6 +61,15 @@ function useRememberSession(meta: HydratedMeta | undefined): void {
 export function BootCard(props: BrowserCardProps): ReactNode {
   const meta = props.meta
   useRememberSession(meta)
+  // Only the card of the CURRENT remembered session hosts the inline live
+  // frame. Subscribed (not read once) so the frame appears the moment the
+  // remember-effect fires, and disappears when a newer browser_start supersedes
+  // this one.
+  const currentSession = useSyncExternalStore(
+    sessionMemory.subscribe,
+    sessionMemory.current,
+    sessionMemory.current,
+  )
 
   if (!meta) return <EmptyCard label="browser_start" detail="no result yet" />
 
@@ -70,11 +83,22 @@ export function BootCard(props: BrowserCardProps): ReactNode {
     .filter(Boolean)
     .join(' · ')
 
+  const liveHost =
+    meta.sessionId !== undefined
+    && meta.refusal === undefined
+    && currentSession === meta.sessionId
+
   return (
-    <CardRow tone={tone} onClick={props.openPanel} title={meta.refusal ? 'start refused' : bootLabel(boot)} detail={detail || meta.summary} cue="open">
-      {meta.refusal ? <Badge tone="refused">{meta.refusal.reason}</Badge> : null}
-      {meta.phase === 'streaming' ? <Badge tone="ok">live</Badge> : null}
-    </CardRow>
+    <>
+      <CardRow tone={tone} onClick={props.openPanel} title={meta.refusal ? 'start refused' : bootLabel(boot)} detail={detail || meta.summary} cue="open">
+        {meta.refusal ? <Badge tone="refused">{meta.refusal.reason}</Badge> : null}
+        {meta.phase === 'streaming' ? <Badge tone="ok">live</Badge> : null}
+      </CardRow>
+      {liveHost ? (
+        // Guarded above: liveHost requires meta.sessionId !== undefined.
+        <InlineLiveFrame sessionId={meta.sessionId!} onOpenPanel={props.openPanel} />
+      ) : null}
+    </>
   )
 }
 

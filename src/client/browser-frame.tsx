@@ -44,6 +44,11 @@ export const WINDOW_SHELL_STYLES: CSSProperties = {
   boxShadow: '0 12px 40px rgba(0,0,0,0.34), 0 2px 8px rgba(0,0,0,0.22)',
   display: 'flex',
   flexDirection: 'column',
+  // FILL the parent column (panel body / inline chat box). Without this the
+  // shell is height:auto — the viewport region inside has nothing to stretch
+  // into and the whole window collapses to its chrome rows (the "black screen
+  // with a 40px sliver" the user saw on their phone).
+  flex: '1 1 auto',
   minHeight: 0,
 }
 

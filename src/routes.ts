@@ -148,6 +148,33 @@ export class Routes implements RouteHandlers {
       if (!payload) return this.#fail(res, 403, 'invalid or expired stream token')
       if (!this.host.hasSession(payload.session)) return this.#fail(res, 404, 'no such browser session')
 
+      // ── single-frame fallback: GET {STREAM_ROUTE_PREFIX}/frame ──────────
+      // Android Chrome (and Safari) do NOT render multipart/x-mixed-replace in
+      // an <img>: the panel chrome arrives but the screen stays black — exactly
+      // what the user saw on their phone. This route serves the LATEST frame as
+      // one ordinary image response; the client re-fetches it on a timer when
+      // the multipart transport never fires a load event. Same token, same
+      // fence, same session checks — only the response shape differs.
+      if (url.pathname.endsWith('/frame')) {
+        const frame = this.host.latestFrame(payload.session)
+        if (!frame) {
+          res.writeHead(204, { 'Cache-Control': 'no-store' })
+          res.end()
+          return
+        }
+        res.writeHead(200, {
+          'Content-Type': frame.mime,
+          'Content-Length': String(frame.data.byteLength),
+          'Cache-Control': 'no-store, no-transform, must-revalidate',
+          Pragma: 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Sequence': String(frame.sequence),
+          'X-Frame-Source': frame.source,
+        })
+        res.end(req.method === 'HEAD' ? undefined : Buffer.from(frame.data))
+        return
+      }
+
       const writer = new MultipartFrameWriter(res)
       // Push the frame we already have so the panel paints instantly instead of
       // waiting up to a full interval.

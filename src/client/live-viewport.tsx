@@ -39,6 +39,7 @@ import {
   sendSession,
   shouldRefresh,
   streamUrl,
+  frameNowUrl,
   captureUrl,
   requestCaptureGrant,
   subscribeInteractions,
@@ -67,6 +68,16 @@ export interface StreamSession {
   phase: StreamPhase
   /** Signed URL for the `<img src>`, or undefined until granted. */
   streamUrl: string | undefined
+  /**
+   * Frame transport actually in use. Android Chrome and Safari never render
+   * `multipart/x-mixed-replace` in an `<img>` — the screen stays black while
+   * everything else looks healthy. When the multipart `<img>` produces no load
+   * event within STALL_MIN_MS of going live, the hook falls back to `poll`:
+   * `pollUrl` then serves ONE latest frame per GET and bumps on a timer.
+   */
+  streamMode: 'multipart' | 'poll'
+  /** Single-frame fallback URL (poll mode only); changes on every tick. */
+  pollUrl: string | undefined
   /** `drive` when the host honoured a takeover, else `view`. */
   scope: 'view' | 'drive'
   sessionId: string | undefined
@@ -133,6 +144,10 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
   const [gesture, setGesture] = useState<{ seq: number; actor: string; text: string } | null>(null)
   const [overlay, setOverlay] = useState<OverlayState>(() => resetOverlay())
   const lastLoadAt = useRef<number>(0)
+  // Multipart liveness probe: did the <img> EVER fire load for this grant?
+  const loadedOnce = useRef(false)
+  const [streamMode, setStreamMode] = useState<'multipart' | 'poll'>('multipart')
+  const [pollNonce, setPollNonce] = useState(0)
 
   const grant = useCallback(
     async (scope: 'view' | 'drive') => {
@@ -170,6 +185,7 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
         // a panel opened mid-session still shows where the pointer is resting.
         setOverlay(current => ({ ...resetOverlay(), cursor: current.cursor }))
         lastLoadAt.current = Date.now()
+        loadedOnce.current = false
         setHeartbeat(Date.now())
         return result.scope ?? 'view'
       } catch (err) {
@@ -231,8 +247,11 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
         void grant(token.scope)
         return
       }
-      if (options.stallDetection !== false && token.stream && phase === 'live' && lastLoadAt.current > 0 && Date.now() - lastLoadAt.current > stallAfter) {
+      if (options.stallDetection !== false && streamMode === 'multipart' && token.stream && phase === 'live' && lastLoadAt.current > 0 && Date.now() - lastLoadAt.current > stallAfter) {
         // The transport gives us no disconnect event; infer it from silence.
+        // Poll mode is exempt: its loads come from the ticker below, and a
+        // re-grant loop would just re-probe multipart forever on a browser
+        // that cannot render it.
         setPhase('stalled')
         setGeneration(value => value + 1)
       }
@@ -241,7 +260,31 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
     // `heartbeat` is updated by onLoad; including it here is what makes a live
     // stream keep cancelling its own stall timer instead of firing once and
     // reconnecting forever.
-  }, [active, token, status, phase, grant, options.frameIntervalMs, heartbeat, options.stallDetection])
+  }, [active, token, status, phase, grant, options.frameIntervalMs, heartbeat, options.stallDetection, streamMode])
+
+  // ── multipart probe → single-frame fallback ───────────────────────────────
+  // If the multipart <img> never fires load within STALL_MIN_MS of going live,
+  // this browser cannot render multipart/x-mixed-replace (Android Chrome,
+  // Safari). Switch to polling the single-frame route instead of showing a
+  // black screen that "looks connected".
+  useEffect(() => {
+    if (phase !== 'live' || streamMode !== 'multipart' || !token?.stream) return
+    if (loadedOnce.current) return
+    const probe = setTimeout(() => {
+      if (!loadedOnce.current) setStreamMode('poll')
+    }, STALL_MIN_MS)
+    return () => clearTimeout(probe)
+  }, [phase, streamMode, token, heartbeat])
+
+  // The poll ticker: one latest frame per GET, at the stream's own cadence.
+  useEffect(() => {
+    if (streamMode !== 'poll' || !active || !token?.stream) return
+    const fps = status?.frames?.fps ?? 2
+    const every = Math.min(2000, Math.max(250, fps > 0 ? 1000 / fps : 500))
+    setPollNonce(value => value + 1) // paint one immediately
+    const timer = setInterval(() => setPollNonce(value => value + 1), every)
+    return () => clearInterval(timer)
+  }, [streamMode, active, token, status?.frames?.fps])
 
   // Gesture channel. Same lifetime as the stream token; backfills whatever the
   // ring still holds so a panel opened mid-gesture does not miss the click that
@@ -276,6 +319,7 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
   /** Report a frame arriving. This is the ONLY liveness signal the transport has. */
   const onLoad = useCallback(() => {
     lastLoadAt.current = Date.now()
+    loadedOnce.current = true
     setPhase(current => (current === 'stalled' ? 'live' : current))
     setHeartbeat(lastLoadAt.current)
   }, [])
@@ -283,6 +327,8 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
   return {
     phase,
     streamUrl: token?.stream && phase !== 'idle' ? streamUrl(token.stream) : undefined,
+    streamMode,
+    pollUrl: streamMode === 'poll' && token?.stream && phase !== 'idle' ? frameNowUrl(token.stream, pollNonce) : undefined,
     scope: token?.scope ?? 'view',
     sessionId,
     status,
@@ -324,6 +370,12 @@ const BUTTON_MAP: Record<number, 'left' | 'middle' | 'right'> = { 0: 'left', 1: 
 
 export interface LiveViewportProps {
   streamUrl: string | undefined
+  /**
+   * Single-frame fallback URL from `useStreamSession().pollUrl`. When present
+   * it REPLACES streamUrl as the <img> src — this browser cannot render the
+   * multipart transport (Android Chrome, Safari).
+   */
+  pollUrl?: string | undefined
   phase: StreamPhase
   frameSource: FrameSource
   /** True while the user owns the pointer. Input is only forwarded when true. */
@@ -491,10 +543,13 @@ export function LiveViewport(props: LiveViewportProps): ReactNode {
         if (canDrive) event.preventDefault()
       }}
     >
-      {showStream && props.streamUrl ? (
+      {showStream && (props.pollUrl ?? props.streamUrl) ? (
         <img
-          key={`${props.streamUrl}:${props.phase === 'stalled' ? 'stalled' : 'ok'}`}
-          src={props.streamUrl}
+          // In poll mode every nonce bump changes the key → the <img> remounts
+          // and fetches the latest single frame. In multipart mode the key is
+          // stable so the stream stays open.
+          key={`${props.pollUrl ?? props.streamUrl}:${props.phase === 'stalled' ? 'stalled' : 'ok'}`}
+          src={(props.pollUrl ?? props.streamUrl)!}
           alt="live browser view"
           draggable={false}
           style={imageStyles}

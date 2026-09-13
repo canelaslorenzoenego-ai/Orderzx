@@ -88,6 +88,16 @@ export function streamUrl(token: string): string {
   return `${STREAM_ROUTE_PREFIX}?token=${encodeURIComponent(token)}`
 }
 
+/**
+ * Build the single-frame fallback URL: one GET → the LATEST frame as an
+ * ordinary image. For browsers that never render multipart/x-mixed-replace in
+ * an `<img>` (Android Chrome, Safari) — the client re-fetches with a fresh
+ * `nonce` on a timer instead.
+ */
+export function frameNowUrl(token: string, nonce: number): string {
+  return `${STREAM_ROUTE_PREFIX}/frame?token=${encodeURIComponent(token)}&n=${nonce}`
+}
+
 /** Build the signed capture URL for an `<img src>`. */
 export function captureUrl(token: string): string {
   return `${CAPTURE_ROUTE_PREFIX}?token=${encodeURIComponent(token)}`

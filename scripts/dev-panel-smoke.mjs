@@ -653,11 +653,13 @@ const el = React.createElement
   step('the capsule pops in on mount', String(styles.animation).includes('dsh-browser-pop'), String(styles.animation))
   step('the attention tone layers the pulse after the pop', String(capsuleStyles('attention').animation).includes('dsh-browser-pop') && String(capsuleStyles('attention').animation).includes('attention'))
   const sheet = overlaySurfaceStyles(460, true)
-  // The SURFACE is the backdrop; the CARD inside it (overlayCardStyles('100%'))
-  // carries the edge-to-edge sheet geometry.
-  step('narrow overlay stretches instead of centering', sheet.alignItems === 'stretch' && sheet.justifyContent === 'stretch', JSON.stringify(sheet).slice(0, 120))
-  step('narrow surface is opaque (a sheet, not a dimmed modal)', String(sheet.background).includes('--dsw-bg-primary'), String(sheet.background))
-  step('narrow sheet respects safe areas', String(sheet.paddingTop).includes('safe-area-inset-top'))
+  // The SURFACE is a bottom-sheet anchor: the CARD inside it carries the opaque
+  // sheet geometry and re-enables pointer events. The surface itself must stay
+  // transparent and touch-through so the conversation above remains usable —
+  // the panel EXTENDS the dashboard instead of replacing it.
+  step('narrow overlay anchors to the bottom edge, leaving the chat visible', sheet.position === 'fixed' && sheet.top === 'auto' && sheet.bottom === 0 && sheet.height === '62dvh', JSON.stringify(sheet).slice(0, 140))
+  step('narrow surface is see-through and touch-through above the sheet', sheet.background === 'transparent' && sheet.pointerEvents === 'none', String(sheet.background))
+  step('narrow sheet respects the bottom safe area', String(sheet.paddingBottom).includes('safe-area-inset-bottom'))
   const floating = overlaySurfaceStyles(460)
   step('wide overlay stays a centered floating card', floating.alignItems === 'center' && floating.background !== undefined)
 }
@@ -687,6 +689,83 @@ const el = React.createElement
   // the panel is open (effects never run in SSR; this asserts no render crash).
   const withHandler = renderToString(el(Capsule, { sessionId: 's1', panelOpen: true, onOpen() {}, onAutoOpen() {}, fetcher: async () => { throw new Error('no fetch during SSR') } }))
   step('capsule with onAutoOpen renders null while the panel is open', withHandler === '')
+}
+
+// ── inline live frame: the screen IN the chat (no sidebar, no cover) ────────
+
+{
+  const {
+    inlineLiveDecision, activitySignature, INLINE_IDLE_COLLAPSE_MS, INLINE_FRAME_HEIGHT,
+    WINDOW_SHELL_STYLES, overlaySurfaceStyles, panelAutoOpenAllowed,
+    shouldRetractPanel, PANEL_RETRACT_IDLE_MS, createPanelStore, frameNowUrl,
+    sessionMemory, BootCard,
+  } = client
+
+  // The expand/collapse matrix.
+  const base = { mode: 'auto', sessionKey: 'b1', lastSessionKey: 'b1', phase: 'streaming', idleMs: 1000, activityChanged: false, challengeBlocking: false, ownedByUser: false }
+  step('inline: streaming + fresh activity expands in chat', inlineLiveDecision({ ...base, activityChanged: true }).expanded === true)
+  step('inline: streaming + idle beyond the threshold collapses', inlineLiveDecision({ ...base, idleMs: INLINE_IDLE_COLLAPSE_MS + 1 }).expanded === false)
+  step('inline: not streaming collapses', inlineLiveDecision({ ...base, phase: 'ready' }).expanded === false)
+  step('inline: a blocking challenge keeps the frame open', inlineLiveDecision({ ...base, challengeBlocking: true, idleMs: 999_999 }).expanded === true)
+  step('inline: a takeover keeps the frame open', inlineLiveDecision({ ...base, ownedByUser: true, idleMs: 999_999 }).expanded === true)
+  step('inline: a manual open survives idleness', inlineLiveDecision({ ...base, mode: 'open', idleMs: 999_999 }).expanded === true)
+  step('inline: a manual close survives fresh activity', inlineLiveDecision({ ...base, mode: 'closed', activityChanged: true }).expanded === false)
+  const rearmed = inlineLiveDecision({ ...base, mode: 'closed', sessionKey: 'b2', activityChanged: true })
+  step('inline: a NEW browser session re-arms auto after a manual close', rearmed.nextMode === 'auto' && rearmed.expanded === true)
+
+  // The activity signature must ignore the free-running capture loop, or
+  // "idle" would never happen while a browser is alive.
+  const s1 = { phase: 'streaming', interactionSeq: 3, session: { activeTab: 0, tabs: [{ index: 0, url: 'https://a.test/', title: '', active: true }] }, frames: { lastSequence: 10 }, recent: [] }
+  const s2 = { ...s1, frames: { lastSequence: 999 } }
+  step('frame sequence alone is NOT activity (capture loop free-runs)', activitySignature(s1) === activitySignature(s2))
+  step('a new gesture IS activity', activitySignature(s1) !== activitySignature({ ...s1, interactionSeq: 4 }))
+  step('a navigation IS activity', activitySignature(s1) !== activitySignature({ ...s1, session: { activeTab: 0, tabs: [{ index: 0, url: 'https://b.test/', title: '', active: true }] } }))
+  step('a new timeline entry IS activity even when the ring is full', activitySignature(s1) !== activitySignature({ ...s1, recent: [{ ts: 5, tool: 'browser_click', summary: 'click e12', ok: true }] }))
+  step('no status, no signature', activitySignature(undefined) === null)
+
+  // Panel auto-retract: model-opened panels fold away when the model stops.
+  step('panel retracts when a model-opened panel goes idle', shouldRetractPanel({ origin: 'boot', idleMs: PANEL_RETRACT_IDLE_MS + 1, challengeBlocking: false, ownedByUser: false }) === true)
+  step('panel never retracts a user-opened panel', shouldRetractPanel({ origin: 'capsule', idleMs: 999_999, challengeBlocking: false, ownedByUser: false }) === false)
+  step('panel never retracts mid-challenge', shouldRetractPanel({ origin: 'boot', idleMs: 999_999, challengeBlocking: true, ownedByUser: false }) === false)
+  step('panel never retracts mid-takeover', shouldRetractPanel({ origin: 'boot', idleMs: 999_999, challengeBlocking: false, ownedByUser: true }) === false)
+  step('panel stays while the model is active', shouldRetractPanel({ origin: 'boot', idleMs: 1000, challengeBlocking: false, ownedByUser: false }) === false)
+
+  // "I can close it" — and it STAYS closed for that search.
+  const store = createPanelStore()
+  store.openIfIdle({ sessionId: 's1', browserSession: 'b1', origin: 'boot' })
+  step('store opens when idle', store.isOpen())
+  store.closeByUser('b1')
+  step('closeByUser closes the panel', !store.isOpen())
+  step('auto-open is suppressed for the dismissed search', store.openIfIdle({ sessionId: 's1', browserSession: 'b1', origin: 'boot' }) === false)
+  step('a NEW browser start re-arms auto-open', store.openIfIdle({ sessionId: 's1', browserSession: 'b2', origin: 'boot' }) === true)
+  store.closeByUser('b2')
+  step('an explicit open overrides the suppression', store.open({ sessionId: 's1', browserSession: 'b2', origin: 'capsule' }) === true)
+
+  // Narrow-viewport policy: the panel never auto-covers a phone; when the user
+  // opens it explicitly it is a bottom sheet — the chat stays visible above it.
+  step('panel auto-open is allowed only on wide viewports', panelAutoOpenAllowed(1280) === true && panelAutoOpenAllowed(899) === false)
+  const sheet = overlaySurfaceStyles(420, true)
+  step('narrow overlay is a bottom sheet, not a full-screen cover', sheet.position === 'fixed' && sheet.height === '62dvh' && sheet.top === 'auto' && sheet.bottom === 0)
+  step('the sheet surface passes touches through to the chat above', sheet.pointerEvents === 'none')
+
+  // The black-sliver fix: the window shell must FILL its flex parent.
+  step('the window shell fills its parent column', WINDOW_SHELL_STYLES.flex === '1 1 auto' && WINDOW_SHELL_STYLES.minHeight === 0)
+  step('the inline frame box is phone-sized so all chrome fits at once', INLINE_FRAME_HEIGHT.includes('dvh') && INLINE_FRAME_HEIGHT.includes('clamp'), INLINE_FRAME_HEIGHT)
+
+  // Single-frame fallback (Android Chrome cannot render multipart in an <img>).
+  const fu = frameNowUrl('tok/en', 7)
+  step('frameNowUrl targets the /frame route with token + nonce', fu.includes('/frame?token=tok%2Fen') && fu.includes('n=7'), fu)
+
+  // SSR: only the CURRENT session's boot card hosts the inline frame, and a
+  // collapsed frame renders no <img> and performs no fetch.
+  sessionMemory.remember('sess-inline1')
+  const inlineMeta = client.fromResult('browser_start', { ok: true, session: 'sess-inline1', phase: 'streaming', url: 'https://example.com/' })
+  const inlineHtml = renderToString(el(BootCard, { callId: 'ci', toolName: 'browser_start', block: {}, sessionId: 's1', meta: inlineMeta, openPanel() {} }))
+  step('the current boot card renders the inline live toggle', inlineHtml.includes('data-dsh-inline-live="collapsed"') && inlineHtml.includes('expand the live browser view'), inlineHtml.slice(0, 220))
+  step('a collapsed inline frame renders no <img>', !inlineHtml.includes('<img'))
+  const staleMeta = client.fromResult('browser_start', { ok: true, session: 'sess-other9', phase: 'streaming', url: 'https://example.com/' })
+  const staleHtml = renderToString(el(BootCard, { callId: 'cj', toolName: 'browser_start', block: {}, sessionId: 's1', meta: staleMeta, openPanel() {} }))
+  step('a superseded boot card hosts no inline frame', !staleHtml.includes('data-dsh-inline-live'))
 }
 
 finish()

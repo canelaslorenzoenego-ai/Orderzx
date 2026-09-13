@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/dsh-browser",
-  "version": "0.2.0-rc.12",
+  "version": "0.2.0-rc.13",
   "description": "DeepSeek Harness plugin \u2014 a live, stealth-capable Chrome inside the conversation. Tiered frame transport, Patchright engine seam, four-tier CAPTCHA pipeline with interactive human handoff, and a page-owned browser panel the user can grab the mouse in. Tested against DSH 0.1.5-rc.2.",
   "license": "MIT",
   "keywords": [

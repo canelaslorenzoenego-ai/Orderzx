@@ -15,7 +15,7 @@
 export const PLUGIN_NAME = 'dsh-browser'
 
 /** Kept in lockstep with package.json by the routes smoke suite. */
-export const PLUGIN_VERSION = '0.2.0-rc.12'
+export const PLUGIN_VERSION = '0.2.0-rc.13'
 
 /** Every HTTP route lives under this prefix on the DSH webserver. */
 export const PLUGIN_ROUTE_PREFIX = '/_dsh/dsh-browser'
@@ -438,6 +438,53 @@ export interface BrowserStatus {
     network: Array<{ ts: number; method: string; url: string; status?: number; resourceType?: string; failure?: string }>
   }
   error?: { message: string; code?: string }
+}
+
+// ── video delivery ──────────────────────────────────────────────────────────
+
+/**
+ * The delivery contract for "find me this video and send it": when a tool
+ * lands on a video page of a platform the user named (YouTube / TikTok /
+ * Instagram), the result carries this hint so the model clips and delivers the
+ * video into the chat instead of describing it. Additive and deterministic —
+ * the skill playbook is the prose, this is the point-of-use reminder.
+ */
+export const VIDEO_DELIVERY_HINT =
+  'You are on a video page. If the user asked for THIS video, deliver the video itself: call browser_clip '
+  + '(it records the playing video), then paste the returned chatLine into your reply VERBATIM — the clip is '
+  + 'delivered to the session and the chat with it. Never describe the video instead of delivering it.'
+
+/** Platform matchers: host (after stripping www./m.) + path shape of a VIDEO page. */
+const VIDEO_PLATFORM_MATCHERS: ReadonlyArray<{ platform: string; host: RegExp; path: RegExp }> = [
+  // Search/results/feed pages must NOT match — only actual video pages.
+  { platform: 'YouTube', host: /(^|\.)youtube\.com$|(^|\.)youtube-nocookie\.com$/i, path: /^\/(watch$|shorts(\/|$)|live\/|embed\/)/i },
+  { platform: 'YouTube', host: /^youtu\.be$/i, path: /^\/[^/]+/i },
+  { platform: 'TikTok', host: /(^|\.)tiktok\.com$/i, path: /\/video\//i },
+  { platform: 'Instagram', host: /(^|\.)instagram\.com$/i, path: /^\/(reel|reels|p|tv)\//i },
+]
+
+/**
+ * Pure: `videoDeliveryHint(url)` → the platform-flavoured hint when the URL is
+ * a video page on a supported platform, else undefined. Exported for the smoke
+ * suites; the matrix (watch/shorts/youtu.be/tiktok-video/reel vs search pages
+ * vs unrelated hosts) is asserted there.
+ */
+export function videoDeliveryHint(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return undefined
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return undefined
+  const host = parsed.hostname.replace(/^www\./i, '').replace(/^m\./i, '')
+  for (const matcher of VIDEO_PLATFORM_MATCHERS) {
+    if (matcher.host.test(host) && matcher.path.test(parsed.pathname)) {
+      return `${VIDEO_DELIVERY_HINT} (platform: ${matcher.platform})`
+    }
+  }
+  return undefined
 }
 
 // ── capability tokens ───────────────────────────────────────────────────────

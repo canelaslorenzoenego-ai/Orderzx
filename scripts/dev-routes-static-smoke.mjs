@@ -66,7 +66,7 @@ const host = {
   // latest frame the stream test's fetch would await headers forever. The
   // production host always grabs one frame immediately at start(), so having
   // one here is the faithful stub, not a convenience.
-  latestFrame: () => ({ data: new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')), mime: 'image/png', width: 1, height: 1, sequence: 1, at: Date.now(), source: 'screenshot' }),
+  latestFrame: () => (state.noFrame ? undefined : { data: new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')), mime: 'image/png', width: 1, height: 1, sequence: 1, at: Date.now(), source: 'screenshot' }),
   subscribeFrames: () => () => {},
   // Captures the routes' session-end tap so the stream fence can fire the
   // production 'closed' event and assert the response actually terminates.
@@ -339,6 +339,26 @@ state.takeover = false
   const ended = await Promise.race([drainDone, new Promise(resolve => setTimeout(() => resolve(false), 3_000))])
   step('an open stream terminates when its session closes', ended === true && /--dsh-browser-frame--/.test(streamText), `ended ${ended}, final boundary ${/--dsh-browser-frame--/.test(streamText)}`)
   controller.abort()
+}
+
+// ── single-frame fallback route ─────────────────────────────────────────────
+// Android Chrome and Safari never render multipart/x-mixed-replace in an
+// <img>: the client falls back to polling {STREAM_ROUTE_PREFIX}/frame, which
+// must serve the LATEST frame as one ordinary image response.
+
+{
+  const frameRes = await fetch(`${base}${protocol.STREAM_ROUTE_PREFIX}/frame?token=${encodeURIComponent(streamToken)}&n=1`, { headers: { Origin: ORIGIN } })
+  const bytes = new Uint8Array(await frameRes.arrayBuffer())
+  step('frame route serves the latest frame as one image', frameRes.status === 200 && frameRes.headers.get('content-type') === 'image/png' && bytes.byteLength > 0, `got ${frameRes.status} ${frameRes.headers.get('content-type')} ${bytes.byteLength}B`)
+  step('frame route is no-store and reports the sequence', (frameRes.headers.get('cache-control') ?? '').includes('no-store') && frameRes.headers.get('x-frame-sequence') === '1', `${frameRes.headers.get('cache-control')} seq=${frameRes.headers.get('x-frame-sequence')}`)
+
+  state.noFrame = true
+  const emptyRes = await fetch(`${base}${protocol.STREAM_ROUTE_PREFIX}/frame?token=${encodeURIComponent(streamToken)}&n=2`, { headers: { Origin: ORIGIN } })
+  step('frame route with no frame yet is 204 (client keeps polling)', emptyRes.status === 204, `got ${emptyRes.status}`)
+  state.noFrame = false
+
+  const badFrame = await fetch(`${base}${protocol.STREAM_ROUTE_PREFIX}/frame?token=garbage`, { headers: { Origin: ORIGIN } })
+  step('frame route rejects a garbage token', badFrame.status === 403, `got ${badFrame.status}`)
 }
 
 // ── interactions SSE ────────────────────────────────────────────────────────

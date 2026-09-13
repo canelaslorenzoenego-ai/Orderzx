@@ -38,6 +38,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import { CARD_TOOLS } from '../protocol.js'
 import type { HydratedMeta } from './meta-hydrate.js'
 import { browserPanelStore, mountBrowserPanelHost, usePanelRequest, type PanelHost, type PanelRequest } from './panel-host.js'
+import { panelAutoOpenAllowed } from './panel-dock.js'
 import { StatusCapsule, installCapsuleKeyframes } from './status-capsule.js'
 import { resolveBrowserMeta } from './meta-hydrate.js'
 import { CardBoundary } from './card-boundary.js'
@@ -48,13 +49,18 @@ export * from './wire.js'
 export * from './boot-sequence.js'
 export * from './panel-dock.js'
 export * from './meta-hydrate.js'
-export { BrowserFrame, FRAME_STYLE_CHROME, FRAME_STYLE_MINIMAL, FRAME_STYLE_FRAMELESS, FRAME_STYLE_OPTIONS, frameTierLabel, phaseTone, prettyHost, type FrameStyle } from './browser-frame.js'
+export { BrowserFrame, FRAME_STYLE_CHROME, FRAME_STYLE_MINIMAL, FRAME_STYLE_FRAMELESS, FRAME_STYLE_OPTIONS, WINDOW_SHELL_STYLES, frameTierLabel, phaseTone, prettyHost, type FrameStyle } from './browser-frame.js'
 export { LiveViewport, useStreamSession, normalizePointer, STALL_MIN_MS, STALL_MULTIPLIER, STATUS_POLL_MS, STREAM_PHASES, type StreamPhase, type StreamSession } from './live-viewport.js'
 export { StatusCapsule, MonitorGlyph, CAPSULE_KEYFRAMES, CAPSULE_POLL_MS, capsuleStyles, autoOpenDecision, createCapsulePoller, installCapsuleKeyframes } from './status-capsule.js'
 export { captionOfEvent } from '../interactions.js'
 export { compatMode, PROTOCOL_VERSION } from '../compat.js'
-export { browserPanelStore, createPanelStore, mountBrowserPanelHost, usePanelRequest, type PanelHost, type PanelRequest, type PanelStore } from './panel-host.js'
+export { browserPanelStore, createPanelStore, mountBrowserPanelHost, usePanelRequest, shouldRetractPanel, PANEL_RETRACT_IDLE_MS, PANEL_RETRACT_CHECK_MS, type PanelHost, type PanelRequest, type PanelStore } from './panel-host.js'
 export { BrowserCard, BootCard, ChallengeCard, describeTarget, type BrowserCardProps, type CardTone } from './cards.js'
+export {
+  InlineLiveFrame, inlineLiveDecision, activitySignature,
+  INLINE_IDLE_COLLAPSE_MS, INLINE_CHECK_MS, INLINE_FRAME_HEIGHT,
+  type InlineMode, type InlineLiveDecision, type InlineLiveFrameProps,
+} from './inline-live.js'
 export { CARD_STYLES } from './card-styles.js'
 export { CardBoundary } from './card-boundary.js'
 export {
@@ -136,9 +142,18 @@ function hostSyncedCard(
 function AutoOpen({ meta, sessionId, autoOpen }: { meta: HydratedMeta; sessionId: string; autoOpen: (request: PanelRequest) => void }): null {
   useEffect(() => {
     if (meta.tool !== CARD_TOOLS.start) return
+    // Narrow screens: the inline live frame in the chat IS the watch surface;
+    // auto-popping a sheet over the conversation is the "it covers my chat"
+    // complaint. The panel still opens on an explicit tap.
+    if (!panelAutoOpenAllowed(currentViewportWidth())) return
     autoOpen({ sessionId, ...(meta.sessionId ? { browserSession: meta.sessionId } : {}), origin: 'boot' })
   }, [meta, sessionId, autoOpen])
   return null
+}
+
+/** SSR-safe viewport width; servers report "wide" so gating never hides panels in tests. */
+export function currentViewportWidth(): number {
+  return typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth
 }
 
 // ── capsule ─────────────────────────────────────────────────────────────────
@@ -177,6 +192,9 @@ function hostSyncedStatusCapsule(): (props: InputDockProps) => ReactNode {
           if (autoOpenTimer !== undefined) clearTimeout(autoOpenTimer)
           autoOpenTimer = setTimeout(() => {
             autoOpenTimer = undefined
+            // Checked at FIRE time: the phone may have rotated / resized since
+            // the capsule popped. Narrow → the inline frame is the surface.
+            if (!panelAutoOpenAllowed(currentViewportWidth())) return
             browserPanelStore.openIfIdle({ sessionId: props.sessionId, origin: 'boot' })
           }, AUTO_OPEN_DELAY_MS)
         }}

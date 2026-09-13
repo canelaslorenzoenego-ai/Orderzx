@@ -46,7 +46,7 @@ import {
   type PanelDockLease,
 } from './panel-dock.js'
 import { BrowserFrame, FRAME_STYLE_CHROME, FRAME_STYLE_OPTIONS, type FrameStyle } from './browser-frame.js'
-import { activitySignature, InlineLiveFrame } from './inline-live.js'
+import { activitySignature, InlineLiveFrame, SessionGrid } from './inline-live.js'
 import { LiveViewport, useStreamSession, type StreamSession } from './live-viewport.js'
 import { installCapsuleKeyframes } from './status-capsule.js'
 import { bootLabel, reducePhase, reduceStatus, resetBoot, shouldAutoOpen, type BootState } from './boot-sequence.js'
@@ -319,6 +319,8 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   const [vw, setVw] = useState<number>(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
   /** 'dash' = the harness dashboard card; 'panel' = the full control panel. */
   const [sideView, setSideView] = useState<'dash' | 'panel'>('dash')
+  /** Focused session inside the dash; undefined = the all-browsers grid. */
+  const [focusSession, setFocusSession] = useState<string | undefined>(undefined)
   /** Phone split width the user dragged to; undefined = the 54% default. */
   const [phoneWidth, setPhoneWidth] = useState<number | undefined>(undefined)
   /** Auto-follow: OFF pins the side surface open however idle the model is. */
@@ -338,6 +340,16 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     stallDetection: !showingHome,
   })
   bootStatusRef.current = session.status
+
+  // A focused grid tile gets its OWN poll here (same shape as the tiles:
+  // stall detection off), inactive while nothing is focused — so the focused
+  // dashboard card never depends on the standalone self-poll path.
+  const focusedStream = useStreamSession({
+    fetcher,
+    ...(focusSession ? { session: focusSession } : {}),
+    active: focusSession !== undefined,
+    stallDetection: false,
+  })
 
   // Mount off-screen and slide in: the first paint carries extending:true, a
   // rAF clears it, and the 180ms transform transition does the rest. This is
@@ -685,6 +697,13 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     const dashSurface = overlay
       ? overlaySurfaceStyles(effectiveWidth, false)
       : dockedSurfaceStyles(dockWidth, boot.extending)
+    // Several browsers live (main agent + sub-agents)? Show them ALL as a
+    // tile grid; tapping a tile focuses it into the full dashboard card.
+    const sessions = status?.sessions ?? []
+    const multi = sessions.length > 1
+    const focused = multi && focusSession !== undefined && sessions.some(entry => entry.id === focusSession)
+      ? focusSession
+      : undefined
     return (
       <div
         ref={containerRef}
@@ -714,15 +733,26 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
             title="drag to resize the split · double-tap for the 54% default"
           />
         ) : null}
-        <InlineLiveFrame
-          sessionId={request.sessionId ?? ''}
-          session={session}
-          fill
-          follow={follow}
-          onFollowChange={setFollow}
-          onOpenPanel={() => setSideView('panel')}
-          onRequestClose={() => store.closeByUser(request.browserSession)}
-        />
+        {multi && focused === undefined ? (
+          <SessionGrid
+            sessions={sessions}
+            cols={vw >= DOCK_MIN_VIEWPORT_WIDTH ? 2 : 1}
+            onFocus={id => setFocusSession(id)}
+          />
+        ) : (
+          <InlineLiveFrame
+            sessionId={focused ?? request.sessionId ?? ''}
+            // Focused tiles use the host's second poll; the single-session
+            // case reuses the primary poll so nothing double-fetches.
+            {...(focused === undefined ? { session } : { session: focusedStream })}
+            fill
+            follow={follow}
+            onFollowChange={setFollow}
+            onOpenGrid={multi ? () => setFocusSession(undefined) : undefined}
+            onOpenPanel={() => setSideView('panel')}
+            onRequestClose={() => store.closeByUser(request.browserSession)}
+          />
+        )}
       </div>
     )
   }

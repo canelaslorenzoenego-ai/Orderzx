@@ -21,7 +21,7 @@ with your own fingerprint and IP: the one solve that always works.
 **Ready to install — one command:**
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.18/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.19/install.sh | bash
 ```
 
 It clones to `~/.orderzx/dsh-browser`, installs, builds, and prints the exact
@@ -57,6 +57,11 @@ you:  "book me a table at X"
   gesture track + scrubber, zero dependencies, signed URL, sandbox CSP.
 - **Video-aware boost** — a playing `<video>` tightens the stream to ~3 fps so
   motion reads as motion; `browser_transcript` reads what a video *says*.
+- **Every browser at once** — when sub-agents spawn their own sessions the side
+  dashboard becomes a tile grid: one live tile per browser (stream, fps, url,
+  challenge dot), tap a tile to focus it with the full control card, ▦ returns
+  to the grid. The whole surface wears the DeepSeek harness design tokens —
+  frosted glass cards, mist gradient, slate type, `#4d6bfe` accent.
 
 ## `/start` — one command to launch
 
@@ -114,14 +119,14 @@ unknown fields and mismatched protocol numbers.
 
 ## Verified end-to-end
 
-**825 checks, all runnable from this checkout:**
+**682 checks, all runnable from this checkout:**
 
 | suite | checks | proves |
 |---|---|---|
-| tools | 200 | every tool against an emulated engine, refusals, scoring |
-| routes | 81 | fence-before-capability, token scopes, capture containment, compat, mid-stream teardown |
+| tools | 207 | every tool against an emulated engine, refusals, scoring |
+| routes | 85 | fence-before-capability, token scopes, capture containment, compat, mid-stream teardown |
 | frames | 72 | transports, tiers, suppression, boost cadence |
-| panel | 202 | the real client bundle SSR'd: capsule, overlay, drawers, players |
+| panel | 246 | the real client bundle SSR'd: capsule, overlay, drawers, players |
 | mcp | 18 | the bridge over a real spawned child's stdio, hostile JSON-RPC |
 | mount | 8 | the REAL harness path: cordis loader + include + cordis.yml entry mounts us, tools and both skills (`/browser-automation`, `/start`) land, dispose unregisters |
 | live | 31 | real Chromium over CDP: start → stream → click → heal → clips → reels |
@@ -149,7 +154,7 @@ pnpm run test:subagent-live  # 9 multi-session isolation steps
 ## Install
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.18/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.19/install.sh | bash
 ```
 
 Prefer source? Clone and `pnpm install && pnpm run build`, then wire the built

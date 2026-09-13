@@ -57,9 +57,9 @@ export { compatMode, PROTOCOL_VERSION } from '../compat.js'
 export { browserPanelStore, createPanelStore, mountBrowserPanelHost, usePanelRequest, shouldRetractPanel, PANEL_RETRACT_IDLE_MS, PANEL_RETRACT_CHECK_MS, type PanelHost, type PanelRequest, type PanelStore } from './panel-host.js'
 export { BrowserCard, BootCard, ChallengeCard, describeTarget, type BrowserCardProps, type CardTone } from './cards.js'
 export {
-  InlineLiveFrame, activitySignature, INLINE_FRAME_HEIGHT,
+  InlineLiveFrame, SessionGrid, SessionTile, activitySignature, INLINE_FRAME_HEIGHT,
   dashboardZoomHeight, DASHBOARD_ZOOMS,
-  type InlineLiveFrameProps, type DashboardZoom,
+  type InlineLiveFrameProps, type SessionGridProps, type DashboardZoom,
 } from './inline-live.js'
 export { CARD_STYLES } from './card-styles.js'
 export { CardBoundary } from './card-boundary.js'

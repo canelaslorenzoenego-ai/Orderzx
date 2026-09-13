@@ -285,7 +285,7 @@ function ActorCursor({ point, pressed }: { point: { x: number; y: number; actor:
       <svg width="26" height="26" viewBox="0 0 24 24" style={pressed ? cursorPressedStyles : cursorStyles}>
         <path
           d={HAND_PATH}
-          fill="rgba(56,139,253,0.95)"
+          fill="rgba(77,107,254,0.95)"
           stroke="rgba(255,255,255,0.92)"
           strokeWidth="1.3"
           strokeLinejoin="round"
@@ -336,7 +336,7 @@ const agentTagStyles: CSSProperties = {
 }
 
 function ClickRipple({ click }: { click: ClickPulse }): ReactNode {
-  const tone = click.button === 'left' ? '56,139,253' : click.button === 'right' ? '210,153,34' : '163,113,247'
+  const tone = click.button === 'left' ? '77,107,254' : click.button === 'right' ? '210,153,34' : '163,113,247'
   return (
     <div style={rippleWrapStyles(click.x, click.y)}>
       <span className="dsh-browser-ripple" style={{ ...rippleStyles, borderColor: `rgba(${tone},0.95)`, boxShadow: `0 0 12px rgba(${tone},0.55)` }} />
@@ -369,7 +369,7 @@ function Trail({ trail }: { trail: GestureTrail }): ReactNode {
         className="dsh-browser-trail"
         d={path}
         fill="none"
-        stroke={isSwipe ? 'rgba(63,185,80,0.95)' : 'rgba(56,139,253,0.75)'}
+        stroke={isSwipe ? 'rgba(63,185,80,0.95)' : 'rgba(77,107,254,0.75)'}
         strokeWidth={isSwipe ? 1.1 : 0.55}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -500,7 +500,7 @@ const rippleLabelStyles: CSSProperties = {
   borderRadius: 5,
   color: 'rgba(255,255,255,0.95)',
   background: 'rgba(10,12,18,0.82)',
-  border: '1px solid rgba(56,139,253,0.4)',
+  border: '1px solid rgba(77,107,254,0.4)',
 }
 
 function focusBoxStyles(x: number, y: number, width: number, height: number): CSSProperties {
@@ -614,7 +614,7 @@ const toastColumnStyles: CSSProperties = {
 }
 
 function toastStyles(tone: ToastMessage['tone']): CSSProperties {
-  const border = tone === 'challenge' ? 'rgba(210,153,34,0.55)' : tone === 'navigate' ? 'rgba(56,139,253,0.45)' : 'rgba(128,128,128,0.3)'
+  const border = tone === 'challenge' ? 'rgba(210,153,34,0.55)' : tone === 'navigate' ? 'rgba(77,107,254,0.45)' : 'rgba(128,128,128,0.3)'
   return {
     fontSize: 11,
     padding: '3px 9px',

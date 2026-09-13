@@ -239,6 +239,13 @@ export function subscribeInteractions(options: {
   signal?: AbortSignal
 }): InteractionSubscription {
   const { token, onEvent, onResync, signal } = options
+  // stop() MUST abort the open fetch, not just flag the loop: an SSE
+  // connection half-open after an unmount keeps occupying one of the browser's
+  // ~6 per-origin HTTP/1.1 slots, and a starved slot queue is exactly how a
+  // later grant POST hangs forever with a perfectly healthy server.
+  const controller = new AbortController()
+  const onExternalAbort = (): void => controller.abort()
+  signal?.addEventListener('abort', onExternalAbort)
   let since = options.since ?? 0
   let stopped = false
   let attempt = 0
@@ -248,7 +255,7 @@ export function subscribeInteractions(options: {
       try {
         const response = await fetch(interactionsUrl(token, since), {
           credentials: 'same-origin',
-          ...(signal ? { signal } : {}),
+          signal: controller.signal,
         })
         if (!response.ok || !response.body) {
           // 403/404: the token died or the session closed. Stop rather than
@@ -297,6 +304,8 @@ export function subscribeInteractions(options: {
   return {
     stop() {
       stopped = true
+      controller.abort()
+      signal?.removeEventListener('abort', onExternalAbort)
     },
   }
 }

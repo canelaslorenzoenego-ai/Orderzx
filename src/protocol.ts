@@ -15,7 +15,7 @@
 export const PLUGIN_NAME = 'dsh-browser'
 
 /** Kept in lockstep with package.json by the routes smoke suite. */
-export const PLUGIN_VERSION = '0.2.0-rc.18'
+export const PLUGIN_VERSION = '0.2.0-rc.19'
 
 /** Every HTTP route lives under this prefix on the DSH webserver. */
 export const PLUGIN_ROUTE_PREFIX = '/_dsh/dsh-browser'

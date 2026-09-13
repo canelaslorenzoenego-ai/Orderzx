@@ -39,7 +39,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { BrowserStatus, ControlMessage } from '../protocol.js'
+import type { BrowserStatus, ControlMessage, SessionSummary } from '../protocol.js'
 import { STREAMING_PHASES } from '../protocol.js'
 import { BrowserFrame, FRAME_STYLE_OPTIONS, NavIcon, type FrameStyle } from './browser-frame.js'
 import { bootLabel, reduceStatus, resetBoot, type BootState } from './boot-sequence.js'
@@ -105,6 +105,8 @@ export interface InlineLiveFrameProps {
   onFollowChange(on: boolean): void
   /** Opens the full panel (takeover, desktop view, drawers live there). */
   onOpenPanel?(): void
+  /** Shows the all-browsers grid (present when several sessions are live). */
+  onOpenGrid?(): void
   /** Closes the side surface (dock lease released / drawer slides away). */
   onRequestClose?(): void
 }
@@ -239,6 +241,11 @@ function DashboardCard(props: InlineLiveFrameProps & { session: StreamSession })
           <span style={followDotStyles(props.follow)} aria-hidden="true" />
           auto-follow
         </button>
+        {props.onOpenGrid ? (
+          <button type="button" style={iconBtnStyles} onClick={props.onOpenGrid} title="all live browsers — main agent and sub-agents, side by side" aria-label="all live browsers">
+            ▦
+          </button>
+        ) : null}
         {props.onOpenPanel ? (
           <button type="button" style={iconBtnStyles} onClick={props.onOpenPanel} title="open the full panel — takeover, desktop view, timeline, console">
             ⤢
@@ -383,6 +390,93 @@ function DashboardCard(props: InlineLiveFrameProps & { session: StreamSession })
   )
 }
 
+// ── all-browsers grid: main agent + every sub-agent, at once ────────────────
+
+export interface SessionGridProps {
+  sessions: SessionSummary[]
+  /** 2 columns on the wide dock, 1 on the phone split. */
+  cols: number
+  onFocus(id: string): void
+}
+
+/**
+ * Every live browser at once. Sub-agents each get their own session
+ * (browser_start with a label); the side dashboard shows them ALL as tiles —
+ * one poll per tile, hands and all — instead of making you flip tabs.
+ */
+export function SessionGrid(props: SessionGridProps): ReactNode {
+  return (
+    <div style={gridWrapStyles}>
+      <div style={gridHeaderStyles}>
+        {props.sessions.length} live browsers — tap one to focus
+      </div>
+      <div
+        style={{ ...gridStyles, gridTemplateColumns: `repeat(${props.cols}, minmax(0, 1fr))` }}
+        data-dash-grid={props.sessions.length}
+      >
+        {props.sessions.map(entry => (
+          <SessionTile key={entry.id} entry={entry} onFocus={props.onFocus} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export function SessionTile(props: { entry: SessionSummary; onFocus(id: string): void }): ReactNode {
+  const { entry } = props
+  const session = useStreamSession({ session: entry.id, active: true, stallDetection: false })
+  const status = session.status
+  const streaming = (STREAMING_PHASES as readonly string[]).includes(status?.phase ?? entry.phase ?? 'idle')
+  const fps = status?.frames?.fps ?? 0
+  const active = status?.session?.tabs?.[status?.session?.activeTab ?? 0]
+
+  return (
+    <button
+      type="button"
+      style={tileStyles}
+      onClick={() => props.onFocus(entry.id)}
+      data-dash-tile={entry.id}
+      aria-label={`focus browser ${entry.label ?? entry.id.slice(0, 6)}`}
+      title={`${entry.label ?? entry.id.slice(0, 6)} · ${active?.url ?? entry.url}`}
+    >
+      <span style={tileHeadStyles}>
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            flex: '0 0 auto',
+            background: entry.challengeVendor ? '#d29922' : streaming ? '#22a06b' : '#94a3b8',
+          }}
+          aria-hidden="true"
+        />
+        <span style={tileLabelStyles}>{entry.label ?? entry.id.slice(0, 6)}</span>
+        {entry.desktopView ? <span style={tileMetaStyles}>desktop</span> : null}
+        {streaming && fps > 0 ? <span style={tileMetaStyles}>{fps} fps</span> : null}
+      </span>
+      <span style={tileViewStyles}>
+        <LiveViewport
+          streamUrl={session.streamUrl}
+          pollUrl={session.pollUrl}
+          phase={session.phase}
+          frameSource={status?.frames?.source ?? 'screenshot'}
+          driving={false}
+          scope={session.scope}
+          highlight={null}
+          challengeBox={null}
+          overlay={session.overlay}
+          gesture={session.gesture}
+          onControl={() => undefined}
+          onFrameLoad={session.onLoad}
+          error={session.error}
+          placeholder={<div style={placeholderStyles}>{entry.label ?? entry.id.slice(0, 6)}…</div>}
+        />
+      </span>
+      <span style={tileUrlStyles}>{active?.url ?? entry.url}</span>
+    </button>
+  )
+}
+
 // ── segmented control (the reference's 适应宽度 / 无框·边框·手机框 row) ──────
 
 function Segmented(props: { label: string; value: string; options: readonly string[]; onPick(value: string): void }): ReactNode {
@@ -411,13 +505,18 @@ const dashCardStyles: CSSProperties = {
   flexDirection: 'column',
   margin: '8px 0',
   minWidth: 0,
-  borderRadius: 12,
+  borderRadius: 16,
   overflow: 'hidden',
-  background: 'var(--dsw-bg-secondary, #ffffff)',
-  border: '1px solid var(--dsw-border-color, rgba(15,23,42,0.10))',
-  boxShadow: '0 6px 24px rgba(15,23,42,0.08)',
-  color: 'var(--dsw-text-primary, #1f2329)',
+  // Frosted glass on the harness's misty canvas — the DeepSeek entry-card
+  // treatment (white fill, 1px #e5e7eb border, 16px rounding).
+  background: 'var(--dsw-bg-secondary, rgba(255,255,255,0.82))',
+  backdropFilter: 'blur(12px) saturate(1.1)',
+  WebkitBackdropFilter: 'blur(12px) saturate(1.1)',
+  border: '1px solid var(--dsw-border-color, #e5e7eb)',
+  boxShadow: '0 6px 24px rgba(15,23,42,0.06)',
+  color: 'var(--dsw-text-primary, #000000)',
   font: 'inherit',
+  fontFamily: 'var(--dsw-font-family, Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif)',
 }
 
 const dashCardFillStyles: CSSProperties = {
@@ -427,6 +526,7 @@ const dashCardFillStyles: CSSProperties = {
   borderRadius: 0,
   border: 'none',
   boxShadow: 'none',
+  background: 'var(--dsw-bg-secondary, rgba(255,255,255,0.92))',
 }
 
 const dashHeaderStyles: CSSProperties = {
@@ -435,8 +535,9 @@ const dashHeaderStyles: CSSProperties = {
   flexWrap: 'wrap',
   gap: 8,
   padding: '8px 10px',
-  background: 'var(--dsw-bg-secondary, #ffffff)',
-  borderBottom: '1px solid var(--dsw-border-color, rgba(15,23,42,0.08))',
+  // The harness canvas mist: cool blue-grey fading to white, top-down.
+  background: 'linear-gradient(180deg, rgba(214,219,220,0.35), rgba(255,255,255,0.9))',
+  borderBottom: '1px solid var(--dsw-border-color, #e5e7eb)',
   flex: '0 0 auto',
 }
 
@@ -449,10 +550,10 @@ const dashTitleButtonStyles: CSSProperties = {
   padding: 0,
   border: 'none',
   background: 'transparent',
-  color: 'inherit',
+  color: 'var(--dsw-text-primary, #000000)',
   font: 'inherit',
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
   textAlign: 'left',
 }
 
@@ -504,7 +605,7 @@ const iconBtnStyles: CSSProperties = {
   borderRadius: 7,
   border: '1px solid transparent',
   background: 'transparent',
-  color: 'var(--dsw-text-secondary, #4b5563)',
+  color: 'var(--dsw-text-secondary, #475569)',
   font: 'inherit',
   fontSize: 14,
   cursor: 'pointer',
@@ -516,8 +617,8 @@ const dashControlsStyles: CSSProperties = {
   gap: 14,
   flexWrap: 'wrap',
   padding: '6px 10px',
-  background: 'var(--dsw-bg-tertiary, #f5f6f8)',
-  borderBottom: '1px solid var(--dsw-border-color, rgba(15,23,42,0.06))',
+  background: 'var(--dsw-bg-tertiary, rgba(229,231,235,0.35))',
+  borderBottom: '1px solid var(--dsw-border-color, #e5e7eb)',
   flex: '0 0 auto',
 }
 
@@ -528,13 +629,13 @@ const segmentedWrapStyles: CSSProperties = {
   gap: 2,
   padding: 2,
   borderRadius: 8,
-  background: 'var(--dsw-bg-secondary, #ffffff)',
-  border: '1px solid var(--dsw-border-color, rgba(15,23,42,0.10))',
+  background: 'var(--dsw-bg-secondary, rgba(255,255,255,0.85))',
+  border: '1px solid var(--dsw-border-color, #e5e7eb)',
 }
 
 const segmentedLabelStyles: CSSProperties = {
   fontSize: 10.5,
-  color: 'var(--dsw-text-tertiary, #6b7280)',
+  color: 'var(--dsw-text-tertiary, #94a3b8)',
   padding: '0 6px 0 7px',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
@@ -548,8 +649,9 @@ function segmentOptionStyles(active: boolean): CSSProperties {
     font: 'inherit',
     fontSize: 11.5,
     cursor: 'pointer',
-    color: active ? 'var(--dsw-text-primary, #1f2329)' : 'var(--dsw-text-tertiary, #6b7280)',
-    background: active ? 'var(--dsw-bg-tertiary, #e9ecef)' : 'transparent',
+    // The wordmark blue is the ONLY accent — tinted, never a solid fill.
+    color: active ? 'var(--dsw-text-primary, #4d6bfe)' : 'var(--dsw-text-secondary, #475569)',
+    background: active ? 'rgba(77, 107, 254, 0.10)' : 'transparent',
     fontWeight: active ? 600 : 400,
   }
 }
@@ -560,8 +662,8 @@ const dashNavStyles: CSSProperties = {
   flexWrap: 'wrap',
   gap: 4,
   padding: '5px 8px',
-  background: 'var(--dsw-bg-secondary, #ffffff)',
-  borderBottom: '1px solid var(--dsw-border-color, rgba(15,23,42,0.06))',
+  background: 'var(--dsw-bg-secondary, rgba(255,255,255,0.9))',
+  borderBottom: '1px solid var(--dsw-border-color, #e5e7eb)',
   flex: '0 0 auto',
 }
 
@@ -575,7 +677,7 @@ function navIconBtnStyles(disabled: boolean): CSSProperties {
     borderRadius: 8,
     border: '1px solid transparent',
     background: 'transparent',
-    color: 'var(--dsw-text-secondary, #4b5563)',
+    color: 'var(--dsw-text-secondary, #475569)',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.35 : 1,
   }
@@ -599,8 +701,8 @@ const dashStatusStyles: CSSProperties = {
   flexWrap: 'wrap',
   gap: 8,
   padding: '6px 12px',
-  background: 'var(--dsw-bg-secondary, #ffffff)',
-  borderTop: '1px solid var(--dsw-border-color, rgba(15,23,42,0.08))',
+  background: 'var(--dsw-bg-secondary, rgba(255,255,255,0.9))',
+  borderTop: '1px solid var(--dsw-border-color, #e5e7eb)',
   fontSize: 11,
   flex: '0 0 auto',
 }
@@ -610,12 +712,12 @@ function statusDotStyles(streaming: boolean): CSSProperties {
 }
 
 const statusLabelStyles: CSSProperties = {
-  color: 'var(--dsw-text-secondary, #4b5563)',
+  color: 'var(--dsw-text-secondary, #475569)',
   fontWeight: 600,
 }
 
 const statusMetaStyles: CSSProperties = {
-  color: 'var(--dsw-text-tertiary, #6b7280)',
+  color: 'var(--dsw-text-tertiary, #94a3b8)',
   fontVariantNumeric: 'tabular-nums',
 }
 
@@ -658,14 +760,97 @@ function handoffBtnStyles(color: string): CSSProperties {
   }
 }
 
+const gridWrapStyles: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 0,
+  flex: '1 1 auto',
+  gap: 8,
+  padding: 8,
+  overflowY: 'auto',
+  background: 'linear-gradient(180deg, rgba(214,219,220,0.30), rgba(255,255,255,0.92))',
+}
+
+const gridHeaderStyles: CSSProperties = {
+  flex: '0 0 auto',
+  fontSize: 11,
+  fontWeight: 600,
+  color: '#475569',
+  padding: '2px 4px',
+}
+
+const gridStyles: CSSProperties = {
+  display: 'grid',
+  gap: 8,
+  alignContent: 'start',
+}
+
+const tileStyles: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  padding: 6,
+  borderRadius: 12,
+  border: '1px solid #e5e7eb',
+  background: 'rgba(255,255,255,0.85)',
+  cursor: 'pointer',
+  textAlign: 'left',
+  font: 'inherit',
+  color: 'inherit',
+  minWidth: 0,
+}
+
+const tileHeadStyles: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  minWidth: 0,
+}
+
+const tileLabelStyles: CSSProperties = {
+  flex: '0 1 auto',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: '#000000',
+}
+
+const tileMetaStyles: CSSProperties = {
+  flex: '0 0 auto',
+  fontSize: 10,
+  color: '#94a3b8',
+  fontVariantNumeric: 'tabular-nums',
+}
+
+const tileViewStyles: CSSProperties = {
+  position: 'relative',
+  display: 'block',
+  height: 150,
+  borderRadius: 8,
+  overflow: 'hidden',
+  background: '#0b1020',
+}
+
+const tileUrlStyles: CSSProperties = {
+  display: 'block',
+  fontSize: 10,
+  color: '#94a3b8',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
 const lastActionStyles: CSSProperties = {
   flex: '0 1 auto',
   minWidth: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
-  color: 'var(--dsw-text-tertiary, #6b7280)',
-  background: 'var(--dsw-bg-tertiary, #f2f3f5)',
+  color: 'var(--dsw-text-secondary, #475569)',
+  background: 'var(--dsw-bg-tertiary, rgba(229,231,235,0.5))',
   borderRadius: 6,
   padding: '1px 6px',
 }

@@ -733,6 +733,23 @@ const el = React.createElement
   step('the dash shows the last model action as a chip', dashHtml.includes('data-dash-last-action') && dashHtml.includes('play the demo vid'))
   step('the dash renders the browser tab strip from status', dashHtml.includes('>TabA<') && dashHtml.includes('>TabB<'))
 
+  // Multiple browsers at once: main agent + sub-agents render as a tile grid,
+  // one live tile (with its own hands) per session.
+  const { SessionGrid } = client
+  const gridHtml = renderToString(el(SessionGrid, {
+    cols: 2,
+    onFocus() {},
+    sessions: [
+      { id: 'sess-main1', label: null, phase: 'streaming', owner: 'agent', url: 'https://a.test/', challengeVendor: null, desktopView: false },
+      { id: 'sess-sub01', label: 'researcher', phase: 'streaming', owner: 'agent', url: 'https://b.test/', challengeVendor: null, desktopView: true },
+    ],
+  }))
+  step('the side dashboard shows EVERY live browser at once (sub-agents included)', gridHtml.includes('data-dash-grid="2"') && gridHtml.includes('data-dash-tile="sess-main1"') && gridHtml.includes('data-dash-tile="sess-sub01"'))
+  step('sub-agent tiles carry their label and desktop-view marker', gridHtml.includes('>researcher<') && gridHtml.includes('>desktop<'))
+  step('a challenged session tile turns amber', renderToString(el(SessionGrid, { cols: 1, onFocus() {}, sessions: [{ id: 's-ch', label: 'x', phase: 'streaming', owner: 'agent', url: 'https://c.test/', challengeVendor: 'cloudflare', desktopView: false }] })).includes('#d29922'))
+
+
+
   // Auto-follow: idleness folds the side surface away; OFF pins it open.
   step('side: retracts when a model-opened surface goes idle', shouldRetractPanel({ origin: 'boot', idleMs: PANEL_RETRACT_IDLE_MS + 1, challengeBlocking: false, ownedByUser: false, follow: true }) === true)
   step('side: auto-follow OFF pins the surface open', shouldRetractPanel({ origin: 'boot', idleMs: 999_999, challengeBlocking: false, ownedByUser: false, follow: false }) === false)
@@ -792,6 +809,8 @@ const el = React.createElement
   userOverlay = applyInteraction(userOverlay, { seq: 1, at: 1, actor: 'user', event: { type: 'click', x: 0.2, y: 0.3, button: 'left' } })
   const userHtml = renderToString(el(InteractionOverlay, { state: userOverlay }))
   step('a taken-over pointer renders the amber you-hand', userHtml.includes('data-actor="user"') && userHtml.includes('>you<'))
+  // Theme match: the agent hand wears the DeepSeek harness wordmark blue.
+  step('the agent hand matches the DeepSeek harness wordmark blue', handsHtml.includes('77,107,254'))
 
   // Single-frame fallback (Android Chrome cannot render multipart in an <img>).
   const fu = frameNowUrl('tok/en', 7)

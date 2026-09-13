@@ -148,6 +148,8 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
   const loadedOnce = useRef(false)
   const [streamMode, setStreamMode] = useState<'multipart' | 'poll'>('multipart')
   const [pollNonce, setPollNonce] = useState(0)
+  /** Epoch ms until which the poll ticker runs at the burst floor. */
+  const [burstUntil, setBurstUntil] = useState(0)
 
   const grant = useCallback(
     async (scope: 'view' | 'drive') => {
@@ -276,15 +278,20 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
     return () => clearTimeout(probe)
   }, [phase, streamMode, token, heartbeat])
 
-  // The poll ticker: one latest frame per GET, at the stream's own cadence.
+  // The poll ticker: one latest frame per GET, at the stream's own cadence —
+  // EXCEPT while the agent is acting: a gesture (or a fresh tool capture)
+  // opens a 4 s burst window at the 200 ms floor, and every gesture repaints
+  // immediately, so each click the model makes lands on screen as it happens
+  // instead of one idle-tier tick later (the "I can't see it searching" bug).
   useEffect(() => {
     if (streamMode !== 'poll' || !active || !token?.stream) return
+    const bursting = Date.now() < burstUntil
     const fps = status?.frames?.fps ?? 2
-    const every = Math.min(2000, Math.max(250, fps > 0 ? 1000 / fps : 500))
+    const every = bursting ? 200 : Math.min(2000, Math.max(250, fps > 0 ? 1000 / fps : 500))
     setPollNonce(value => value + 1) // paint one immediately
     const timer = setInterval(() => setPollNonce(value => value + 1), every)
     return () => clearInterval(timer)
-  }, [streamMode, active, token, status?.frames?.fps])
+  }, [streamMode, active, token, status?.frames?.fps, burstUntil])
 
   // Gesture channel. Same lifetime as the stream token; backfills whatever the
   // ring still holds so a panel opened mid-gesture does not miss the click that
@@ -298,6 +305,10 @@ export function useStreamSession(options: StreamSessionOptions = {}): StreamSess
       onEvent: record => {
         setOverlay(current => applyInteraction(current, record))
         setGesture({ seq: record.seq, actor: record.actor, text: captionOfEvent(record.event) })
+        // The agent just ACTED: repaint now and hold the burst window open so
+        // the on-demand tier streams at the floor cadence while it works.
+        setBurstUntil(Date.now() + 4000)
+        setPollNonce(value => value + 1)
       },
       onResync: () => setOverlay(current => ({ ...resetOverlay(), cursor: current.cursor })),
     })

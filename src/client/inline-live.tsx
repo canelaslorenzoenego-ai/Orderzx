@@ -75,12 +75,19 @@ export function activitySignature(status: BrowserStatus | undefined): string | n
   if (!status) return null
   const active = status.session?.tabs?.[status.session?.activeTab ?? 0]
   const tail = status.recent?.[status.recent.length - 1]
+  // rc.20: EVERY session counts as activity. A sub-agent searching in its own
+  // browser used to look like idleness to the primary's signature, so the
+  // dashboard folded itself away in the middle of the sub-agent's search.
+  const sessions = (status.sessions ?? [])
+    .map(entry => `${entry.id}:${entry.phase}:${entry.url}:${entry.challengeVendor ?? ''}`)
+    .join(',')
   return [
     status.interactionSeq ?? 0,
     active?.url ?? '',
     tail ? `${tail.ts}:${tail.tool}:${tail.summary}` : '',
     status.session?.activeTab ?? -1,
     status.phase ?? 'idle',
+    sessions,
   ].join('|')
 }
 

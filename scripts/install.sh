@@ -58,6 +58,9 @@ echo "    name: '@dsh-community/dsh-browser/client'"
 echo "    # or by path when the package is not resolvable from the profile:"
 echo "    # name: file://$DEST/lib/client.js"
 echo
+echo "→ extending the harness dashboard (rc.20: the device panel never covers the chat)"
+node scripts/patch-harness-dashboard.mjs || echo "  (no dsh-android checkout found — web/client profile unaffected)"
+echo
 echo "Then start a session — type /start in the composer, or call:"
 echo "browser_start({ url: \"https://example.com\" })"
 echo "Panel: GET /_dsh/dsh-browser/panel on the loopback fence."

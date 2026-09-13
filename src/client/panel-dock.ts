@@ -100,6 +100,7 @@ export const DOCK_MAX_FOREIGN_FRACTION = 0.62
 
 /** Candidate selectors for the DSH root, in order of specificity. */
 const ROOT_SELECTORS = [
+  '#root',
   '[data-dsh-app-frame]',
   '[data-app-frame]',
   '#dsh-app',
@@ -126,12 +127,46 @@ export interface PanelDockLease {
  * get a working panel rather than a silent overlay.
  */
 export function findDockElement(doc: Document): HTMLElement | null {
+  const roots: HTMLElement[] = []
   for (const selector of ROOT_SELECTORS) {
     const found = doc.querySelector<HTMLElement>(selector)
-    if (found) return found
+    if (found) roots.push(found)
   }
-  const first = doc.body?.firstElementChild
-  return first instanceof HTMLElement ? first : null
+  if (roots.length === 0) {
+    const first = doc.body?.firstElementChild
+    if (first instanceof HTMLElement) roots.push(first)
+  }
+  if (roots.length === 0) return null
+  // rc.20: lease the DEEPEST viewport-covering painter, not the outer root.
+  // Harness shells that size themselves `position: fixed; inset: 0` or
+  // `width: 100vw` ignore a margin written to an ancestor block — the push
+  // "succeeded" while the panel visibly floated over the chat. Margin +
+  // forced sheet on the covering element itself constrains it in both cases
+  // (a fixed box honours its own margins; the sheet kills the 100vw width).
+  const win = doc.defaultView
+  const vw = win?.innerWidth ?? 0
+  const vh = win?.innerHeight ?? 0
+  const descend = (root: HTMLElement): HTMLElement => {
+    let best = root
+    let node: HTMLElement | null = root
+    for (let depth = 0; node !== null && depth < 3; depth += 1) {
+      const kids = Array.from(node.children) as HTMLElement[]
+      const cover = kids.find(kid => {
+        const rect = kid.getBoundingClientRect()
+        return rect.width >= vw * 0.95 && rect.height >= vh * 0.95
+      })
+      if (cover === undefined) break
+      best = cover
+      node = cover
+    }
+    return best
+  }
+  for (const root of roots) {
+    const deep = descend(root)
+    if (deep !== root) return deep
+  }
+  const first = roots[0]
+  return first === undefined ? null : descend(first)
 }
 
 /**
@@ -160,28 +195,67 @@ export function claimPanelDock(doc: Document, widthPx: number): PanelDockLease {
   element.style.transition = priorTransition || 'margin-right 240ms cubic-bezier(0.34, 1.28, 0.44, 1)'
   element.style.marginRight = `${clamped}px`
 
+  // ── extend-only hardening (rc.20) ────────────────────────────────────────
+  // Hostile harness shells size themselves with `width: 100vw` or inline
+  // fixed widths, where a margin write changes nothing and the panel merely
+  // FLOATS over the chat — the report behind this revision. Two extra layers
+  // make the push stick on any shell:
+  //   * a forced `<style>` keyed on our ownership attribute re-declares the
+  //     push with `!important` (beats inline + 100vw sizing), and
+  //   * a watchdog (MutationObserver + 400 ms interval) re-asserts attribute,
+  //     margin and sheet whenever the host's React re-render wipes them.
+  // With the watchdog healing instead of reporting invalid, the caller's
+  // overlay fallback is unreachable in practice — the layout always extends.
+  const sheet = doc.createElement('style')
+  sheet.setAttribute('data-dsh-dock-push', 'true')
+  doc.head.appendChild(sheet)
+  const writeSheet = (px: number): void => {
+    sheet.textContent =
+      `[${PANEL_DOCK_ATTRIBUTE}="true"]{margin-right:${px}px !important;` +
+      `max-width:calc(100% - ${px}px) !important;width:auto !important;}`
+  }
+  writeSheet(clamped)
+
   let released = false
   let expected = `${clamped}px`
+  const heal = (): void => {
+    if (released) return
+    if (element.getAttribute(PANEL_DOCK_ATTRIBUTE) !== 'true') element.setAttribute(PANEL_DOCK_ATTRIBUTE, 'true')
+    if (element.style.marginRight !== expected) element.style.marginRight = expected
+    // The wiper may DETACH the sheet (a detached <style> with perfect text
+    // still changes nothing): re-attach, then refill if it was also emptied.
+    if (!sheet.isConnected) doc.head.appendChild(sheet)
+    if (sheet.textContent === '') writeSheet(parseInt(expected, 10) || 0)
+  }
+  const observer = typeof MutationObserver === 'undefined'
+    ? null
+    : new MutationObserver(heal)
+  observer?.observe(element, { attributes: true, attributeFilter: ['style', 'class', PANEL_DOCK_ATTRIBUTE] })
+  const watchdog = setInterval(heal, 400)
 
   return {
     element,
     setMargin(px: number) {
       if (released) return
-      // Someone else wrote to the margin: stop fighting them and let the caller
-      // fall back to an overlay on the next validity check.
-      if (element.style.marginRight !== expected) return
       const next = clampMargin(px, doc.defaultView?.innerWidth ?? widthPx * 2)
       expected = `${next}px`
+      heal()
       element.style.marginRight = expected
+      writeSheet(next)
     },
     isValid() {
       if (released) return false
       if (!element.isConnected) return false
-      return element.style.marginRight === expected
+      // The watchdog heals wipes; a transient mismatch is not a lost lease.
+      heal()
+      return true
     },
     release() {
       if (released) return
       released = true
+      observer?.disconnect()
+      clearInterval(watchdog)
+      sheet.remove()
       // Restore exactly what we found. Not '' — that would clobber a margin the
       // host or another plugin set before we arrived.
       element.style.marginRight = prior

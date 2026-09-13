@@ -321,6 +321,8 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   const [sideView, setSideView] = useState<'dash' | 'panel'>('dash')
   /** Focused session inside the dash; undefined = the all-browsers grid. */
   const [focusSession, setFocusSession] = useState<string | undefined>(undefined)
+  /** User tapped ▦ back to the grid: suppress challenge auto-focus until it clears. */
+  const [gridPinned, setGridPinned] = useState(false)
   /** Phone split width the user dragged to; undefined = the 54% default. */
   const [phoneWidth, setPhoneWidth] = useState<number | undefined>(undefined)
   /** Auto-follow: OFF pins the side surface open however idle the model is. */
@@ -341,13 +343,24 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   })
   bootStatusRef.current = session.status
 
+  // rc.20: a session that hits a VENDOR CHALLENGE (Google recaptcha, hCaptcha,
+  // Turnstile) auto-focuses even without a manual tap, so the check and its
+  // solved/failed/skip handoff row are on screen the moment it is detected —
+  // the model's stall used to happen one grid tap away from the user's eyes.
+  const challengeId = (session.status?.sessions ?? []).find(entry => entry.challengeVendor !== null)?.id
+  useEffect(() => {
+    if (challengeId === undefined && gridPinned) setGridPinned(false)
+  }, [challengeId, gridPinned])
+  const challengeFocus = gridPinned ? undefined : challengeId
+  const effectiveFocus = focusSession ?? challengeFocus
+
   // A focused grid tile gets its OWN poll here (same shape as the tiles:
   // stall detection off), inactive while nothing is focused — so the focused
   // dashboard card never depends on the standalone self-poll path.
   const focusedStream = useStreamSession({
     fetcher,
-    ...(focusSession ? { session: focusSession } : {}),
-    active: focusSession !== undefined,
+    ...(effectiveFocus ? { session: effectiveFocus } : {}),
+    active: effectiveFocus !== undefined,
     stallDetection: false,
   })
 
@@ -437,7 +450,11 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
 
   // ── dock lease: this is the "dashboard extends" part ──────────────────────
   const effectiveWidth = desiredPanelWidth(
-    status?.session ? { width: status.session.viewport.width, height: status.session.viewport.height } : undefined,
+    // rc.20: `viewport` is optional on the wire — a host that omits it must
+    // degrade to "no display report", not take the whole panel down.
+    status?.session?.viewport !== undefined
+      ? { width: status.session.viewport.width, height: status.session.viewport.height }
+      : undefined,
     width,
     dragged,
   )
@@ -701,8 +718,8 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     // tile grid; tapping a tile focuses it into the full dashboard card.
     const sessions = status?.sessions ?? []
     const multi = sessions.length > 1
-    const focused = multi && focusSession !== undefined && sessions.some(entry => entry.id === focusSession)
-      ? focusSession
+    const focused = multi && effectiveFocus !== undefined && sessions.some(entry => entry.id === effectiveFocus)
+      ? effectiveFocus
       : undefined
     return (
       <div
@@ -737,7 +754,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
           <SessionGrid
             sessions={sessions}
             cols={vw >= DOCK_MIN_VIEWPORT_WIDTH ? 2 : 1}
-            onFocus={id => setFocusSession(id)}
+            onFocus={id => { setFocusSession(id); setGridPinned(false) }}
           />
         ) : (
           <InlineLiveFrame
@@ -748,7 +765,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
             fill
             follow={follow}
             onFollowChange={setFollow}
-            onOpenGrid={multi ? () => setFocusSession(undefined) : undefined}
+            onOpenGrid={multi ? () => { setFocusSession(undefined); setGridPinned(true) } : undefined}
             onOpenPanel={() => setSideView('panel')}
             onRequestClose={() => store.closeByUser(request.browserSession)}
           />

@@ -21,7 +21,7 @@ with your own fingerprint and IP: the one solve that always works.
 **Ready to install — one command:**
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.19/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.20/install.sh | bash
 ```
 
 It clones to `~/.orderzx/dsh-browser`, installs, builds, and prints the exact
@@ -57,6 +57,15 @@ you:  "book me a table at X"
   gesture track + scrubber, zero dependencies, signed URL, sandbox CSP.
 - **Video-aware boost** — a playing `<video>` tightens the stream to ~3 fps so
   motion reads as motion; `browser_transcript` reads what a video *says*.
+- **Extend-only dashboard, hardened** — the dock lease now pushes the
+  DEEPEST viewport-covering shell (fixed/100vw harness layouts included)
+  with an `!important` sheet plus a MutationObserver watchdog that heals
+  harness re-render wipes; the Android harness dashboard lost its modal
+  overlay fallback entirely (phone split at every width).
+- **See the model act** — every gesture repaints the stream immediately and
+  opens a 4 s burst window at the 200 ms poll floor; sub-agent activity
+  counts as activity, so auto-follow no longer folds mid-search;
+  a vendor challenge auto-focuses its session the moment it is detected.
 - **Every browser at once** — when sub-agents spawn their own sessions the side
   dashboard becomes a tile grid: one live tile per browser (stream, fps, url,
   challenge dot), tap a tile to focus it with the full control card, ▦ returns
@@ -154,7 +163,7 @@ pnpm run test:subagent-live  # 9 multi-session isolation steps
 ## Install
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.19/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.20/install.sh | bash
 ```
 
 Prefer source? Clone and `pnpm install && pnpm run build`, then wire the built

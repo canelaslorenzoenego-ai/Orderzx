@@ -290,7 +290,7 @@ export class BrowserHostController {
     }
 
     const adapter = await resolveEngineProvider(providerName)
-    const userDataDir = await this.#resolveProfileDir(options.profile)
+    const userDataDir = await this.#resolveProfileDir(options.profile, id)
     this.#publish({ type: 'phase', session: id, phase: 'warming-profile', detail: userDataDir ?? 'ephemeral' })
 
     let browser: EngineBrowser
@@ -1418,11 +1418,16 @@ export class BrowserHostController {
     return { ok: true }
   }
 
-  async #resolveProfileDir(name?: string): Promise<string | null> {
+  async #resolveProfileDir(name?: string | null, sessionId?: string): Promise<string | null> {
     const configured = this.#config.engine.userDataDir
     if (configured) return configured
     if (name === null) return null
-    const dir = join_(profileRoot(), name ?? 'default')
+    // rc.22: an anonymous session gets its OWN directory. Sharing one
+    // `default` profile made a second concurrent launch die on Chromium's
+    // ProcessSingleton lock — main agent plus sub-agent browsers (the whole
+    // rc.19 grid) could never coexist on persistent profiles. Named profiles
+    // still share by explicit choice; a configured userDataDir still wins.
+    const dir = join_(profileRoot(), name ?? `session-${sessionId ?? 'default'}`)
     await mkdir(dir, { recursive: true, mode: 0o700 })
     return dir
   }

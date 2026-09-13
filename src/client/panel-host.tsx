@@ -317,6 +317,21 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   const [narrow, setNarrow] = useState(false)
   /** Current viewport width — the dock split scales with it on phones. */
   const [vw, setVw] = useState<number>(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
+  /**
+   * rc.24: track width a patched harness (deepseek-harness external track)
+   * actually granted. The surface sizes to it so ask and grant never disagree
+   * about where the conversation/panel border lives. Undefined = unpatched
+   * harness, where the margin lease is the only channel.
+   */
+  const [grantedWidth, setGrantedWidth] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    const onGranted = (event: Event): void => {
+      const detail = (event as CustomEvent<{ width?: number }>).detail
+      setGrantedWidth(typeof detail?.width === 'number' ? detail.width : undefined)
+    }
+    window.addEventListener('dsh-external-side-track-granted', onGranted)
+    return () => window.removeEventListener('dsh-external-side-track-granted', onGranted)
+  }, [])
   /** 'dash' = the harness dashboard card; 'panel' = the full control panel. */
   const [sideView, setSideView] = useState<'dash' | 'panel'>('dash')
   /** Focused session inside the dash; undefined = the all-browsers grid. */
@@ -465,7 +480,8 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     // The dock EXTENDS the layout at every width: on a phone the leased
     // margin turns the window into a two-column split (chat left, dashboard
     // right) instead of overlapping anything.
-    const dockWidth = sideDockWidth(viewportWidth, effectiveWidth, phoneWidth)
+    const desiredWidth = sideDockWidth(viewportWidth, effectiveWidth, phoneWidth)
+    const dockWidth = grantedWidth !== undefined && grantedWidth > 0 ? Math.min(desiredWidth, grantedWidth) : desiredWidth
     // Not enough room for side-by-side even after scaling: overlay rather
     // than squeezing the conversation into an unreadable sliver.
     if (viewportWidth - dockWidth < dockLeftClearance(viewportWidth)) {
@@ -489,7 +505,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
       // Released on unmount and on width change (the effect re-runs and
       // re-claims); the lease restores exactly what it found.
     }
-  }, [effectiveWidth, vw, phoneWidth])
+  }, [effectiveWidth, vw, phoneWidth, grantedWidth])
 
   // Release the dock when the panel closes or the plugin unloads.
   useEffect(
@@ -710,7 +726,8 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   // the harness-light dashboard card fills the surface and the chat column
   // (with its composer bar) stays exactly as the harness laid it out.
   if (sideView === 'dash' && !showingHome) {
-    const dockWidth = sideDockWidth(vw, effectiveWidth, phoneWidth)
+    const desiredDashWidth = sideDockWidth(vw, effectiveWidth, phoneWidth)
+    const dockWidth = grantedWidth !== undefined && grantedWidth > 0 ? Math.min(desiredDashWidth, grantedWidth) : desiredDashWidth
     const dashSurface = overlay
       ? overlaySurfaceStyles(effectiveWidth, false)
       : dockedSurfaceStyles(dockWidth, boot.extending)

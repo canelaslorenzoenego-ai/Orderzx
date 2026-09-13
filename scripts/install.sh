@@ -58,8 +58,8 @@ echo "    name: '@dsh-community/dsh-browser/client'"
 echo "    # or by path when the package is not resolvable from the profile:"
 echo "    # name: file://$DEST/lib/client.js"
 echo
-echo "→ extending the harness dashboard (rc.21: extend-only dashboard + stream poll fallback)"
-node scripts/patch-harness-dashboard.mjs || echo "  (no dsh-android checkout found — web/client profile unaffected)"
+echo "→ extending the harness dashboard (rc.24: native external track on deepseek-harness, extend-only dsh-android)"
+node scripts/patch-harness-dashboard.mjs || echo "  (no harness checkout found — the built-in margin-lease fallback still extends)"
 echo
 echo "Then start a session — type /start in the composer, or call:"
 echo "browser_start({ url: \"https://example.com\" })"

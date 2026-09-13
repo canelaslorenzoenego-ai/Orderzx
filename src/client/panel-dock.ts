@@ -117,6 +117,12 @@ export interface PanelDockLease {
   isValid(): boolean
   /** Restore the prior margin and give up the claim. */
   release(): void
+  /**
+   * Native-track harnesses only: the track width the frame actually granted
+   * (our ask, clamped by its column geometry). Undefined elsewhere; the host
+   * sizes the surface to it so ask and grant never disagree.
+   */
+  grantedPx?(): number | undefined
 }
 
 /**
@@ -177,6 +183,43 @@ export function findDockElement(doc: Document): HTMLElement | null {
  * null case by rendering an overlay.
  */
 export function claimPanelDock(doc: Document, widthPx: number): PanelDockLease {
+  // rc.24: a PATCHED harness (deepseek-harness ui-layout with the external
+  // track) reserves a real grid column for us: publish the width through the
+  // `--dsh-external-side-track` variable + window event and let the frame's
+  // own track system make room. No margin lease, no forced sheet — the
+  // harness extends natively. Unpatched harnesses fall through to the lease.
+  const native = doc.querySelector<HTMLElement>('[data-dsh-external-track]')
+  if (native !== null && doc.defaultView !== null) {
+    const root = doc.documentElement
+    const win = doc.defaultView
+    let released = false
+    const write = (px: number): void => {
+      root.style.setProperty('--dsh-external-side-track', `${px}px`)
+      win.dispatchEvent(new CustomEvent('dsh-external-side-track', { detail: { width: px } }))
+    }
+    write(clampMargin(widthPx, win.innerWidth))
+    return {
+      element: native,
+      setMargin(px: number) {
+        if (released) return
+        write(clampMargin(px, win.innerWidth))
+      },
+      grantedPx() {
+        if (released) return undefined
+        const px = Number.parseFloat(root.style.getPropertyValue('--dsh-external-side-track-granted'))
+        return Number.isFinite(px) && px >= 0 ? px : undefined
+      },
+      isValid() {
+        return !released && root.style.getPropertyValue('--dsh-external-side-track') !== ''
+      },
+      release() {
+        if (released) return
+        released = true
+        root.style.removeProperty('--dsh-external-side-track')
+        win.dispatchEvent(new CustomEvent('dsh-external-side-track', { detail: { width: 0 } }))
+      },
+    }
+  }
   const element = findDockElement(doc)
   if (!element || doc.defaultView === null) return unavailable()
   // No width gate: on phones the lease is what turns the window into the

@@ -1,0 +1,167 @@
+From 7e1dbb4ac4b0f9e5275891db5faafacf56ce71a5 Mon Sep 17 00:00:00 2001
+From: canelaslorenzoenego-ai <agent@local>
+Date: Sun, 13 Sep 2026 09:44:59 +0000
+Subject: [PATCH] =?UTF-8?q?ui-layout:=20external=20track=20=E2=80=94=20let?=
+ =?UTF-8?q?=20plugins=20extend=20the=20dashboard=20instead=20of=20overlayi?=
+ =?UTF-8?q?ng=20it?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds a fourth grid track to AppFrame reserved for an external surface (the
+dsh-browser panel). The plugin publishes its desired width via the
+--dsh-external-side-track CSS variable on <html> plus a
+'dsh-external-side-track' window event; AppFrame clamps it against the
+viewport geometry (computeColumns gains an 'external' input/output, with
+narrow-viewport floors so phones get a real track instead of an overlay),
+renders the 4-track grid, and publishes the granted width back via
+--dsh-external-side-track-granted + a matching event so the plugin sizes
+its surface to the track the frame actually reserved. The frame advertises
+support with data-dsh-external-track="ready".
+
+Default width is 0 — untouched harnesses render exactly as before.
+---
+ .../client/ui-layout/src/client/AppFrame.tsx  | 49 +++++++++++++++++--
+ .../client/ui-layout/src/client/columns.ts    | 38 +++++++++++---
+ 2 files changed, 77 insertions(+), 10 deletions(-)
+
+diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
+index 05bb4b9..4d48e82 100644
+--- a/packages/client/ui-layout/src/client/AppFrame.tsx
++++ b/packages/client/ui-layout/src/client/AppFrame.tsx
+@@ -165,8 +165,47 @@ export function AppFrame({
+   const rightbarPreference = layoutInfo.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO
+   // Opening on a narrow frame collapses the left sidebar. Eligibility must
+   // include that space before the occupant's first shown report arrives.
+-  const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference)
+-  const cols = computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0)
++  // ── external plugin side track (dsh-browser dashboard) ──────────────────
++  // Injected side surfaces publish their width through the
++  // `--dsh-external-side-track` variable on documentElement and the
++  // `dsh-external-side-track` window event. The frame reserves a real grid
++  // track for them so the conversation EXTENDS instead of being covered by a
++  // fixed-position panel. The event is the fast path; the variable poll is
++  // the belt-and-braces path for clients that only set the variable.
++  const [externalTrack, setExternalTrack] = useState(0)
++  useEffect(() => {
++    const read = (): number => {
++      const raw = document.documentElement.style.getPropertyValue('--dsh-external-side-track')
++      const px = Number.parseFloat(raw)
++      return Number.isFinite(px) && px > 0 ? Math.round(px) : 0
++    }
++    const onEvent = (event: Event): void => {
++      const detail = (event as CustomEvent<{ width?: number }>).detail
++      const px = typeof detail?.width === 'number' ? detail.width : read()
++      setExternalTrack(Number.isFinite(px) && px > 0 ? Math.round(px) : 0)
++    }
++    window.addEventListener('dsh-external-side-track', onEvent)
++    setExternalTrack(read())
++    const timer = setInterval(() => {
++      const px = read()
++      setExternalTrack(current => (current === px ? current : px))
++    }, 400)
++    return () => {
++      window.removeEventListener('dsh-external-side-track', onEvent)
++      clearInterval(timer)
++    }
++  }, [])
++
++  const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, externalTrack)
++  const cols = computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, externalTrack)
++
++  // Publish the GRANTED track back to the plugin: it sizes its surface to
++  // what the frame actually reserved (a 720px ask beside an open sidebar may
++  // only get 600), so the two never disagree about where the border is.
++  useLayoutEffect(() => {
++    document.documentElement.style.setProperty('--dsh-external-side-track-granted', `${cols.external}px`)
++    window.dispatchEvent(new CustomEvent('dsh-external-side-track-granted', { detail: { width: cols.external } }))
++  }, [cols.external])
+   const colsRef = useRef(cols)
+   colsRef.current = cols
+   const rightbarWidth = useRef(normal.rightbar)
+@@ -205,8 +244,12 @@ export function AppFrame({
+       className={css.frame}
+       style={{
+         gridTemplateColumns:
+-          `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px`,
++          `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px ${cols.external}px`,
+       }}
++      // Advertised to injected side surfaces (dsh-browser): this build
++      // reserves a real track for them, so their dock publishes the
++      // --dsh-external-side-track variable instead of leasing margins.
++      data-dsh-external-track="ready"
+       data-sidebar-collapsed={sidebarCollapsed || undefined}
+       data-rightbar-collapsed={cols.rightbar === 0 || undefined}
+       data-rightbar-fullscreen={layoutInfo.rightbarFullscreen || undefined}
+diff --git a/packages/client/ui-layout/src/client/columns.ts b/packages/client/ui-layout/src/client/columns.ts
+index a58b284..9ffdaab 100644
+--- a/packages/client/ui-layout/src/client/columns.ts
++++ b/packages/client/ui-layout/src/client/columns.ts
+@@ -5,7 +5,7 @@
+  */
+ 
+ /** Resolved widths for one frame. */
+-export interface Columns { sidebar: number; center: number; rightbar: number }
++export interface Columns { sidebar: number; center: number; rightbar: number; external: number }
+ 
+ /** Center width protected while the normal right column is open. */
+ export const CENTER_MIN = 400
+@@ -27,6 +27,17 @@ export const RIGHTBAR_MIN = 300
+ export const RIGHTBAR_MAX_RATIO = 0.7
+ /** First-open right panel preference as a fraction of the frame. */
+ export const RIGHTBAR_DEFAULT_RATIO = 0.45
++/** External plugin side track (dsh-browser dashboard) concession floor. */
++export const EXTERNAL_MIN = 240
++/** Maximum external side track as a fraction of the frame. */
++export const EXTERNAL_MAX_RATIO = 0.6
++/** Below this viewport the frame is in its narrow presentation. */
++export const NARROW_VIEWPORT = 768
++/** Center floor in the narrow presentation: the chat stays usable beside a
++ *  plugin column (matches the dsh-browser phone-split chat clearance). */
++export const CENTER_MIN_NARROW = 179
++/** External track floor in the narrow presentation. */
++export const EXTERNAL_MIN_NARROW = 140
+ 
+ /**
+  * Clamp a panel width into its contract range.
+@@ -40,18 +51,31 @@ export function clampWidth(px: number, min: number, max: number): number {
+ }
+ 
+ /**
+- * Solve the three column widths for one viewport frame.
++ * Solve the column widths for one viewport frame.
+  * @param viewport - available frame width in px.
+  * @param sidebar - sidebar width preference in px (0 = closed).
+  * @param rightbar - requested right panel width in px (0 = no track).
+- * @returns actual widths after shrinking or removing the right track; only
+- *   without that track may the center fall below its minimum, down to zero.
++ * @param external - requested EXTERNAL plugin side track in px (0 = none).
++ *   Injected side surfaces (the dsh-browser dashboard) publish this through
++ *   the `--dsh-external-side-track` variable / `dsh-external-side-track`
++ *   window event; AppFrame feeds it here so the centre makes room for the
++ *   plugin column instead of letting a fixed-position panel cover it. The
++ *   external track concedes after the rightbar: it is a guest in the frame.
++ * @returns actual widths after shrinking or removing tracks; only without
++ *   the rightbar track may the center fall below its minimum, down to zero.
+  */
+-export function computeColumns(viewport: number, sidebar: number, rightbar: number): Columns {
++export function computeColumns(viewport: number, sidebar: number, rightbar: number, external = 0): Columns {
++  const narrow = viewport < NARROW_VIEWPORT
++  const centerMin = narrow ? CENTER_MIN_NARROW : CENTER_MIN
++  const externalMin = narrow ? EXTERNAL_MIN_NARROW : EXTERNAL_MIN
+   const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
+-  const available = viewport - s - CENTER_MIN
++  const available = viewport - s - centerMin
+   const r = rightbar === 0 || available < RIGHTBAR_MIN
+     ? 0
+     : Math.min(available, clampWidth(rightbar, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO))
+-  return { sidebar: s, center: Math.max(0, viewport - s - r), rightbar: r }
++  const availableExternal = available - r
++  const e = external === 0 || availableExternal < externalMin
++    ? 0
++    : Math.min(availableExternal, clampWidth(external, externalMin, viewport * EXTERNAL_MAX_RATIO))
++  return { sidebar: s, center: Math.max(0, viewport - s - r - e), rightbar: r, external: e }
+ }
+-- 
+2.47.3
+

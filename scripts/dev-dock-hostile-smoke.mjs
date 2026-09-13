@@ -77,6 +77,87 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"/>
 </script>
 </body></html>`
 
+// Patched-harness page: simulates the modified deepseek-harness AppFrame —
+// a grid frame advertising [data-dsh-external-track] that reserves the
+// external track from the published variable/event (native extend).
+const PATCHED_HTML = `<!doctype html><html><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>html,body{margin:0;height:100%;background:#0b0b0f}
+[data-frame]{display:grid;grid-template-rows:100%;height:100%;overflow:hidden}
+[data-rail]{background:#111}[data-center]{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+[data-chat-column]{flex:1 1 auto;overflow:hidden;padding:16px 20px}
+[data-chatbar]{flex:0 0 auto;height:56px;border-top:1px solid #333}</style>
+</head><body>
+<div data-frame data-dsh-external-track="ready">
+  <div data-rail></div>
+  <div data-center><div data-chat-column></div><div data-chatbar></div></div>
+  <div data-rightbar></div>
+  <div data-external></div>
+</div>
+<script>
+  // The modified AppFrame's track subscription, faithfully tiny.
+  const frame = document.querySelector('[data-frame]');
+  const read = () => {
+    const px = Number.parseFloat(document.documentElement.style.getPropertyValue('--dsh-external-side-track'));
+    return Number.isFinite(px) && px > 0 ? Math.round(px) : 0;
+  };
+  const apply = (ext) => {
+    const vw = window.innerWidth;
+    const narrow = vw < 768;
+    const centerMin = narrow ? 179 : 400;
+    const extMin = narrow ? 140 : 240;
+    const rail = 56;
+    const available = vw - rail - centerMin;
+    const e = ext === 0 || available < extMin ? 0 : Math.min(available, Math.max(extMin, Math.min(ext, vw * 0.6)));
+    frame.style.gridTemplateColumns = rail + 'px minmax(0, 1fr) 0px ' + e + 'px';
+    document.documentElement.style.setProperty('--dsh-external-side-track-granted', e + 'px');
+    window.dispatchEvent(new CustomEvent('dsh-external-side-track-granted', { detail: { width: e } }));
+  };
+  window.addEventListener('dsh-external-side-track', (ev) => apply(typeof ev.detail?.width === 'number' ? ev.detail.width : read()));
+  setInterval(() => apply(read()), 400);
+  apply(read());
+</script>
+<script src="/node_modules/react/umd/react.production.min.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.production.min.js"></script>
+<script>
+  window.__dshRequire = function (id) {
+    switch (id) {
+      case 'react': return window.React;
+      case 'react-dom': return window.ReactDOM;
+      case 'react-dom/client': return { createRoot: window.ReactDOM.createRoot, hydrateRoot: window.ReactDOM.hydrateRoot };
+      case 'react/jsx-runtime': {
+        const jsx = (type, props, key) => {
+          const { children, ...rest } = props ?? {};
+          if (key !== undefined) rest.key = key;
+          return window.React.createElement(type, rest, children);
+        };
+        return { jsx, jsxs: jsx, jsxDEV: jsx, Fragment: window.React.Fragment };
+      }
+      default: throw new Error('smoke: unexpected require(' + id + ')');
+    }
+  };
+  window.__ModuleLoader__ = { load({ factory }) { window.DSHBrowserClient = factory(window.__dshRequire); } };
+</script>
+<script src="/lib/client.js"></script>
+<script>
+  const SESSION = 'smoke-session';
+  const EXPIRES = Date.now() + 3600000;
+  const json = b => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const fetcher = async (url) => {
+    const u = new URL(url, 'http://smoke.local');
+    if (u.pathname.endsWith('/grant')) return json({ kind: 'session', session: SESSION, scope: 'view',
+      stream: { token: 'st', expiresAt: EXPIRES }, control: { token: 'ct', expiresAt: EXPIRES } });
+    if (u.pathname.endsWith('/status')) return json({ phase: 'streaming', interactionSeq: 1, recent: [],
+      session: { id: SESSION, tabs: [{ url: 'http://smoke.local/' }], activeTab: 0, viewport: { width: 1280, height: 720 } },
+      sessions: [{ id: SESSION, label: null, phase: 'streaming', owner: 'agent', url: 'http://smoke.local/', challengeVendor: null, desktopView: false }],
+      frames: { source: 'screenshot', fps: 2, lastSequence: 1, lastAt: Date.now(), bytes: 100 } });
+    return new Response('nope', { status: 404 });
+  };
+  const host = window.DSHBrowserClient.mountBrowserPanelHost({ fetcher });
+  host.open({ sessionId: 'conv-smoke', browserSession: SESSION, origin: 'boot' });
+</script>
+</body></html>`
+
 const MIME = { '.js': 'text/javascript', '.html': 'text/html; charset=utf-8' }
 const stats = { polls: [], sse: null, sseOpenedAt: 0, pollMode: false, paths: [] }
 const server = createServer((req, res) => {
@@ -84,6 +165,11 @@ const server = createServer((req, res) => {
   if (url.pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
     res.end(HTML)
+    return
+  }
+  if (url.pathname === '/patched') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(PATCHED_HTML)
     return
   }
   if (url.pathname === '/__stats') {
@@ -225,6 +311,50 @@ try {
   const immediate = afterEmit.length > 0 ? afterEmit[0] - emitAt : Number.POSITIVE_INFINITY
   ok(immediate < 450, `burst: repaint lands within one tick of the gesture (${Math.round(immediate)} ms)`)
   await burstPage.context().close()
+
+  // ── patched harness: native external track (deepseek-harness ui-layout) ──
+  const measurePatched = page => page.evaluate(() => {
+    const chat = document.querySelector('[data-chat-column]')?.getBoundingClientRect()
+    const panel = document.querySelector('[data-dsh-side-surface]')?.getBoundingClientRect()
+    const frame = document.querySelector('[data-frame]')
+    return {
+      surface: document.querySelector('[data-dsh-side-surface]')?.getAttribute('data-dsh-side-surface') ?? null,
+      chatRight: chat?.right ?? -1,
+      chatWidth: chat?.width ?? -1,
+      panelLeft: panel?.left ?? -1,
+      frameMargin: frame?.style.marginRight ?? 'x',
+      variable: document.documentElement.style.getPropertyValue('--dsh-external-side-track'),
+    }
+  })
+  for (const [label, viewport] of [
+    ['patched desktop 1280', { width: 1280, height: 800 }],
+    ['patched phone 390', { width: 390, height: 844 }],
+  ]) {
+    const page = await (await browser.newContext({ viewport })).newPage()
+    await page.goto(`http://127.0.0.1:${PORT}/patched`)
+    await page.waitForSelector('[data-dsh-side-surface]', { timeout: 20000 })
+    await page.waitForTimeout(900)
+    const m = await measurePatched(page)
+    ok(m.surface === 'dock', `${label}: surface docks`)
+    ok(m.chatRight <= m.panelLeft + 2 && m.chatWidth >= 150,
+      `${label}: conversation extends around the panel (${Math.round(m.chatRight)} vs ${Math.round(m.panelLeft)})`)
+    ok(m.frameMargin === '', `${label}: native track — no margin lease on the frame`)
+    ok(m.variable !== '', `${label}: width published via --dsh-external-side-track (${m.variable || 'missing'})`)
+    if (label.includes('phone')) {
+      // ask 211 / granted 155 on a 390 viewport: the surface must size to the
+      // GRANTED track, or it would overlap the conversation again.
+      const panelWidth = (await page.evaluate(() => window.innerWidth)) - m.panelLeft
+      ok(Math.abs(panelWidth - 155) <= 3, `patched phone: panel sizes to the granted track (${Math.round(panelWidth)}px)`)
+    }
+    if (label.includes('desktop')) {
+      await page.click('[data-dsh-side-surface] button[aria-label="close the side dashboard"]')
+      await page.waitForTimeout(700)
+      const after = await measurePatched(page)
+      ok(after.variable === '' && after.chatWidth > m.chatWidth + 200,
+        'patched desktop: close returns the track to the conversation')
+    }
+    await page.context().close()
+  }
 } finally {
   await browser.close()
   server.close()

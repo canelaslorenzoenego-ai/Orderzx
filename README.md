@@ -21,7 +21,7 @@ with your own fingerprint and IP: the one solve that always works.
 **Ready to install — one command:**
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.23/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.24/install.sh | bash
 ```
 
 It clones to `~/.orderzx/dsh-browser`, installs, builds, and prints the exact
@@ -126,9 +126,28 @@ Built to survive any dsh-web / Cordis generation, past or future:
 Enforced by smoke steps that feed the suites yesterday's manifests, tomorrow's
 unknown fields and mismatched protocol numbers.
 
+## DeepSeek Harness — native extend track
+
+On the real [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)
+dashboard the panel doesn't lease margins at all: it extends the layout as a
+first-class grid track.
+
+- `harness/deepseek-harness-dashboard.patch` modifies the harness's own
+  `packages/client/ui-layout` (AppFrame + columns): a 4th **external** track
+  the plugin feeds via the `--dsh-external-side-track` CSS variable +
+  `dsh-external-side-track` window event, clamped to the viewport (narrow
+  floors keep phones honest: a real ≥140 px track, never an overlay), with the
+  granted width published back (`--dsh-external-side-track-granted`) so the
+  panel sizes to exactly what the frame reserved.
+- `node scripts/patch-harness-dashboard.mjs --web-target <checkout>` applies it
+  (idempotent; also patches a dsh-android checkout when one is found).
+- The client feature-detects the patched frame (`data-dsh-external-track`) and
+  uses the native channel; unpatched harnesses fall back to the rc.20 margin
+  lease — same extend guarantee, two mechanisms.
+
 ## Verified end-to-end
 
-**696 checks, all runnable from this checkout:**
+**706 checks, all runnable from this checkout:**
 
 | suite | checks | proves |
 |---|---|---|
@@ -139,7 +158,7 @@ unknown fields and mismatched protocol numbers.
 | mcp | 18 | the bridge over a real spawned child's stdio, hostile JSON-RPC |
 | mount | 8 | the REAL harness path: cordis loader + include + cordis.yml entry mounts us, tools and both skills (`/browser-automation`, `/start`) land, dispose unregisters |
 | live | 31 | real Chromium over CDP: start → stream → click → heal → clips → reels |
-| dock-hostile | 14 | hostile harness shell (fixed + 100vw) with a 700 ms lease wiper: extend at 1280/390, heal, × release |
+| dock-hostile | 24 | hostile harness shell (fixed + 100vw) with a 700 ms lease wiper: extend at 1280/390, heal, × release, plus a patched-harness native external track (granted-width sizing, no margin lease) |
 | e2e | 15 | real host + real routes + real bundle, end to end |
 | dispatch | 123 | every tool through the real dispatch path: schemas honest, refusals typed |
 | workflow | 23 | record → secrets → replay → background jobs on a real browser |
@@ -164,7 +183,7 @@ pnpm run test:subagent-live  # 9 multi-session isolation steps
 ## Install
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.23/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.24/install.sh | bash
 ```
 
 Prefer source? Clone and `pnpm install && pnpm run build`, then wire the built

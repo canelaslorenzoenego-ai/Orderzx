@@ -84,6 +84,7 @@ export {
 } from './challenge/adapters.js'
 export {
   BROWSER_SKILL_CONTENT, BROWSER_SKILL_DESCRIPTION, BROWSER_SKILL_NAME, BROWSER_SKILL_WHEN_TO_USE,
+  START_SKILL_CONTENT, START_SKILL_DESCRIPTION, START_SKILL_NAME, START_SKILL_WHEN_TO_USE,
   registerBrowserSkill,
 } from './skill.js'
 export {

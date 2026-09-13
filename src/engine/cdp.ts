@@ -280,12 +280,26 @@ export const cdpProvider: EngineProviderAdapter = {
         byRaw.delete(raw)
         if (activeId === id) activeId = pages.keys().next().value
       })
+      // Ownership propagates to popups: a window.open/target=_blank child of an
+      // owned page belongs to this session (and gets its own popup listener via
+      // this same wrap). byRaw dedupes against any other discovery path.
+      raw.on?.('popup', (child: any) => {
+        if (!byRaw.has(child)) wrap(child)
+      })
       return page
     }
 
-    for (const raw of (context.pages() as any[]) ?? []) wrap(raw)
-    context.on('page', (raw: any) => wrap(raw))
-    activeId = pages.keys().next().value
+    // Ownership scoping: an attached browser belongs to the USER, and may also
+    // host other sessions' tabs (sub-agents share one CDP browser). A session
+    // sees, drives and closes only the pages IT created — pre-existing tabs are
+    // never adopted (the old wrap-everything loop made browser_start hijack and
+    // navigate the user's own first tab, and let one session close another's
+    // pages), and there is deliberately no blanket context 'page' listener: it
+    // would pull other sessions' tabs into this session's tab strip. Popups
+    // (window.open, target=_blank) descend from an owned page, so ownership
+    // propagates through each wrapper's own 'popup' listener instead.
+    const first = wrap(await context.newPage())
+    activeId = first.id
 
     return {
       provider: 'cdp',
@@ -337,9 +351,15 @@ export const cdpProvider: EngineProviderAdapter = {
         ],
       }),
       async close() {
-        // Detach WITHOUT killing the user's browser. This is the whole point of
-        // the provider: we are a guest.
+        // Close OWNED pages, then detach WITHOUT killing the user's browser —
+        // we are a guest. Owned tabs must not litter the user's window after
+        // stop (every previous suite run left stale tabs behind), and foreign
+        // tabs were never wrapped, so they cannot be touched here.
+        const owned = [...pages.values()]
         pages.clear()
+        byRaw.clear()
+        activeId = undefined
+        for (const page of owned) await page.close().catch(() => undefined)
         await browser.close().catch(() => undefined)
       },
     }

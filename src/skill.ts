@@ -125,6 +125,39 @@ Every gesture is streamed to the panel separately from the frames: your pointer 
 This plugin is dual-use tooling. Use it on sites you own, sites you are authorised to test, and public data at a polite rate. Do not use it to defeat access controls, rate limits or per-account quotas on services you do not control. When a site blocks the agent and no challenge is present, that is an answer — report it to the user instead of escalating.
 `
 
+// ── the /start command ──────────────────────────────────────────────────────
+
+/** Kebab-case skill id, addressable as `/start` in the composer. */
+export const START_SKILL_NAME = 'start'
+
+export const START_SKILL_DESCRIPTION =
+  'Start the dsh browser now: /start [url] launches a live Chrome session — the chatbar capsule pops its boot '
+  + 'animation and the dashboard extends into the live view on its own.'
+
+export const START_SKILL_WHEN_TO_USE =
+  'When the user types /start (optionally followed by a URL) to launch the browser, or asks for the dsh browser '
+  + 'to be started right now.'
+
+/**
+ * A COMMAND, not a playbook: short, imperative, zero decisions left to make.
+ * The presentation half (capsule pop → dashboard extend → live frames) is
+ * wired to the browser_start lifecycle in the client already — the skill must
+ * only make the model fire the tool and get out of the way.
+ */
+export const START_SKILL_CONTENT = `# /start — launch the dsh browser
+
+This is a COMMAND. The user asked to start the browser; act immediately, without clarifying questions.
+
+1. Parse what follows \`/start\`: a URL (\`https://…\`) or a bare domain (\`example.com\`) becomes the \`url\` argument. Anything else — including nothing at all — means call \`browser_start\` with no \`url\`.
+2. Call \`browser_start\` NOW. One call. Add \`label\` only when the user named the session.
+3. Reply with ONE short line from the result: \`dsh-browser started — session <id>, <phase>.\` and nothing else.
+4. Do NOT call browser_see, browser_observe or any capture verb afterwards to "show" the page: the chatbar capsule pops its boot animation and the dashboard extends into the live view by themselves the moment the session starts streaming. The user is already looking at it.
+5. If the result has \`ok:false\`, quote its \`message\` in one line and stop. Do not retry.
+
+Sub-agents: every \`browser_start\` creates YOUR OWN independent session (up to 4 concurrent, LRU-evicted when idle). Drive only the session id you created or were explicitly handed — never another agent's.
+`
+
+
 /**
  * Register the playbook when the host provides the skill service.
  *
@@ -150,14 +183,28 @@ export function registerBrowserSkill(ctx: Context): () => void {
       }
     }).skills
     skillCtx.effect(
-      () =>
-        skills.register({
+      () => {
+        const offPlaybook = skills.register({
           name: BROWSER_SKILL_NAME,
           description: BROWSER_SKILL_DESCRIPTION,
           whenToUse: BROWSER_SKILL_WHEN_TO_USE,
           content: BROWSER_SKILL_CONTENT,
           source: 'bundled',
-        }),
+        })
+        // The /start command rides the same service: a second, imperative skill
+        // whose invocation means "launch the browser now".
+        const offStart = skills.register({
+          name: START_SKILL_NAME,
+          description: START_SKILL_DESCRIPTION,
+          whenToUse: START_SKILL_WHEN_TO_USE,
+          content: START_SKILL_CONTENT,
+          source: 'bundled',
+        })
+        return () => {
+          offPlaybook()
+          offStart()
+        }
+      },
       'dsh-browser:skill',
     )
   })

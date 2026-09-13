@@ -21,7 +21,7 @@ with your own fingerprint and IP: the one solve that always works.
 **Ready to install — one command:**
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.10/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.11/install.sh | bash
 ```
 
 It clones to `~/.orderzx/dsh-browser`, installs, builds, and prints the exact
@@ -57,6 +57,22 @@ you:  "book me a table at X"
   gesture track + scrubber, zero dependencies, signed URL, sandbox CSP.
 - **Video-aware boost** — a playing `<video>` tightens the stream to ~3 fps so
   motion reads as motion; `browser_transcript` reads what a video *says*.
+
+## `/start` — one command to launch
+
+Type **`/start`** (optionally `/start https://example.com`) in the composer.
+The command starts the browser immediately: the chatbar capsule pops its
+monitor boot animation, the dashboard extends to the right, and the live view
+connects — the whole boot sequence plays by itself, with no clarifying
+questions and no model-side peeks at the page (the panel is already showing
+it). Refusals come back as one quoted line.
+
+**Sub-agents each get their own browser.** Every `browser_start` opens an
+independent session (up to 4 concurrent, LRU-evicted when idle). A session
+sees, drives and closes only its OWN tabs: on an attached CDP browser your
+personal tabs — and other agents' tabs — are never hijacked, listed, or
+closable, and popups stay owned by the session that opened them. Stopping one
+agent's session never disturbs another's.
 
 ## What it does
 
@@ -98,30 +114,42 @@ unknown fields and mismatched protocol numbers.
 
 ## Verified end-to-end
 
-**610 checks, all runnable from this checkout:**
+**825 checks, all runnable from this checkout:**
 
 | suite | checks | proves |
 |---|---|---|
 | tools | 200 | every tool against an emulated engine, refusals, scoring |
-| routes | 77 | fence-before-capability, token scopes, capture containment, compat |
+| routes | 81 | fence-before-capability, token scopes, capture containment, compat, mid-stream teardown |
 | frames | 72 | transports, tiers, suppression, boost cadence |
 | panel | 202 | the real client bundle SSR'd: capsule, overlay, drawers, players |
-| mcp | 13 | the bridge over a real spawned child's stdio |
+| mcp | 18 | the bridge over a real spawned child's stdio, hostile JSON-RPC |
+| mount | 8 | the REAL harness path: cordis loader + include + cordis.yml entry mounts us, tools and both skills (`/browser-automation`, `/start`) land, dispose unregisters |
 | live | 31 | real Chromium over CDP: start → stream → click → heal → clips → reels |
 | e2e | 15 | real host + real routes + real bundle, end to end |
-| mount | 5 | the REAL harness path: cordis loader + include + cordis.yml entry mounts us, tools land in ToolRuntime, dispose unregisters |
+| dispatch | 123 | every tool through the real dispatch path: schemas honest, refusals typed |
+| workflow | 23 | record → secrets → replay → background jobs on a real browser |
+| tools-live | 20 | files fence + upload/download, tabs, desktop_view, transcript, screencast — real browser |
+| challenge-live | 13 | live DOM detection, adapter solve with page-effect proof, handoff, domain gates |
+| stream-teardown | 10 | an open frame stream terminates cleanly when its session dies |
+| subagent-live | 9 | concurrent sessions isolated: own tabs only, popup ownership, independent stop |
 
 ```bash
-pnpm test            # 564 static assertions, no browser needed
-pnpm run test:live   # 31 against a real Chrome (opt-in)
-pnpm run test:e2e    # 15: host + routes + client bundle + Chrome
-node scripts/dev-host-mount-smoke.mjs  # 5: real cordis loader mount
+pnpm test                    # 573 static assertions, no browser needed
+node scripts/dev-host-mount-smoke.mjs   # 8: real cordis loader mount
+pnpm run test:live           # 31 against a real Chrome (opt-in)
+pnpm run test:e2e            # 15: host + routes + client bundle + Chrome
+pnpm run test:dispatch       # 123 dispatch-path schema/refusal checks
+pnpm run test:workflow       # 23 record/replay/job steps
+pnpm run test:tools-live     # 20 files/tabs/desktop_view/transcript/screencast
+pnpm run test:challenge-live # 13 challenge pipeline steps
+pnpm run test:stream-teardown # 10 mid-stream teardown steps
+pnpm run test:subagent-live  # 9 multi-session isolation steps
 ```
 
 ## Install
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.10/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.11/install.sh | bash
 ```
 
 Prefer source? Clone and `pnpm install && pnpm run build`, then wire the built

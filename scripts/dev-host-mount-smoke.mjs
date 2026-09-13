@@ -71,6 +71,29 @@ await fiber.dispose()
 const left = registered.filter(r => Boolean(ctx2.tools?.get(r.name)))
 ok(left.length === 0, `fiber dispose unregisters the tools (${left.length} left)`)
 
+// skill service: the full harness surfaces registered skills as slash candidates.
+// The plugin must register BOTH the playbook (/browser-automation) and the
+// imperative /start command — and unregister both on dispose.
+const ctx3 = new Context()
+await ctx3.plugin(SystemPrompt)
+await ctx3.plugin(ToolRuntime)
+const skillState = new Map()
+ctx3.provide('skills', {
+  register: skill => {
+    skillState.set(skill.name, { skill, live: true })
+    return () => { const entry = skillState.get(skill.name); if (entry) entry.live = false }
+  },
+})
+const fiber3 = await ctx3.plugin(plugin, { engine: { provider: 'playwright-core' } })
+await new Promise(r => setTimeout(r, 200))
+const skillNames = [...skillState.values()].map(e => e.skill.name)
+ok(skillNames.includes('browser-automation') && skillNames.includes('start'), `playbook + /start command skills register with the skills service (${skillNames.join(', ') || 'none'})`)
+const startEntry = skillState.get('start')
+ok(Boolean(startEntry && /COMMAND/.test(startEntry.skill.content) && /browser_start/.test(startEntry.skill.content) && typeof startEntry.skill.description === 'string'), '/start skill content is an imperative browser_start command')
+await fiber3.dispose()
+await new Promise(r => setTimeout(r, 100))
+ok([...skillState.values()].every(e => !e.live), 'fiber dispose unregisters both skills')
+
 rmSync(dir, { recursive: true, force: true })
 console.log(`\ndsh-browser host-mount smoke: ${pass} passed, ${failures.length} failed`)
 if (failures.length) process.exit(1)

@@ -4,7 +4,8 @@
  * The action cards stay compact one-liners: their job is to say WHAT happened
  * and to be a handle into the browser. The BOOT card is different since the
  * user asked for the screen "directly in chat": it extends downward with the
- * inline live frame (see inline-live.tsx) — the chat dashboard grows to show
+ * side dashboard (see inline-live.tsx + panel-host.tsx) — the live card sits
+ * BESIDE the chat (leased column / phone drawer), never inside the flow
  * the whole chrome window while the model searches, and collapses when it
  * stops. Only the CURRENT session's boot card hosts the frame; superseded
  * cards shrink back to their one-line readout.
@@ -33,7 +34,7 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { CARD_TOOLS } from '../protocol.js'
 import { CARD_STYLES } from './card-styles.js'
 import { bootLabel, reduceMeta, resetBoot, type BootState } from './boot-sequence.js'
-import { InlineLiveFrame } from './inline-live.js'
+
 import { sessionMemory, shortenUrl, type HydratedMeta } from './meta-hydrate.js'
 
 export interface BrowserCardProps extends ToolCallViewProps {
@@ -89,16 +90,17 @@ export function BootCard(props: BrowserCardProps): ReactNode {
     && currentSession === meta.sessionId
 
   return (
-    <>
-      <CardRow tone={tone} onClick={props.openPanel} title={meta.refusal ? 'start refused' : bootLabel(boot)} detail={detail || meta.summary} cue="open">
-        {meta.refusal ? <Badge tone="refused">{meta.refusal.reason}</Badge> : null}
-        {meta.phase === 'streaming' ? <Badge tone="ok">live</Badge> : null}
-      </CardRow>
-      {liveHost ? (
-        // Guarded above: liveHost requires meta.sessionId !== undefined.
-        <InlineLiveFrame sessionId={meta.sessionId!} onOpenPanel={props.openPanel} />
-      ) : null}
-    </>
+    <CardRow
+      tone={tone}
+      onClick={props.openPanel}
+      title={meta.refusal ? 'start refused' : bootLabel(boot)}
+      detail={detail || meta.summary}
+      cue={liveHost ? 'side' : 'open'}
+      sideToggle={liveHost}
+    >
+      {meta.refusal ? <Badge tone="refused">{meta.refusal.reason}</Badge> : null}
+      {meta.phase === 'streaming' ? <Badge tone="ok">live</Badge> : null}
+    </CardRow>
   )
 }
 
@@ -196,6 +198,8 @@ interface CardRowProps {
   onClick(): void
   children?: ReactNode
   pulse?: boolean
+  /** Marks the row as the affordance that opens the SIDE dashboard. */
+  sideToggle?: boolean
 }
 
 function CardRow(props: CardRowProps): ReactNode {
@@ -219,6 +223,7 @@ function CardRow(props: CardRowProps): ReactNode {
         background: palette.bg,
         ...(props.pulse ? { animation: 'dsh-browser-attention 2s ease-out infinite' } : {}),
       }}
+      {...(props.sideToggle ? { 'data-dsh-side-toggle': 'true' } : {})}
       title="open the live browser panel"
     >
       <span style={{ ...CARD_STYLES.title, color: palette.fg, flex: '0 0 auto' }}>{props.title}</span>

@@ -30,22 +30,35 @@ export const PANEL_DOCK_ATTRIBUTE = 'data-dsh-browser-panel-dock'
 
 /**
  * Below this viewport width there is no room for a side-by-side layout, so the
- * panel becomes a bottom sheet instead of stealing margin — and the PRIMARY
- * watch surface on phones is the inline live frame in the chat itself
- * (inline-live.tsx), not the panel.
+ * side surface becomes a right-edge DRAWER (slide-over) instead of a leased
+ * column — and the full panel becomes a bottom sheet reached from the drawer's
+ * ⤢. The chat column and its composer bar stay 100% free either way: the
+ * dashboard lives on the SIDE, never in the message flow.
  */
 export const DOCK_MIN_VIEWPORT_WIDTH = 900
 
 /**
- * Should the panel auto-open at this viewport width? Pure, for the smoke suite.
+ * Where the side dashboard sits at a given viewport width. Pure, for smoke.
  *
- * On narrow screens the answer is NO: auto-opening a sheet over the
- * conversation is exactly the "it just covers the chat" complaint. The inline
- * frame already shows the search live in-chat; the panel opens on an explicit
- * tap (capsule or card) only.
+ *  - `dock`   — a leased right-hand column; the app frame is pushed over by
+ *    exactly the panel width, so nothing is ever covered.
+ *  - `drawer` — a fixed right-edge slide-over (phones: there is no margin to
+ *    lease). Closed = fully hidden; the chat bar is untouched.
+ */
+export type SideDockPlacement = 'dock' | 'drawer'
+export function sideDockPlacement(viewportWidth: number): SideDockPlacement {
+  return viewportWidth >= DOCK_MIN_VIEWPORT_WIDTH ? 'dock' : 'drawer'
+}
+
+/**
+ * Should a browser boot auto-open the side surface? Pure, for the smoke suite.
+ *
+ * Yes at EVERY width now: the surface is on the side (leased column or drawer),
+ * never in the chat flow, so auto-opening cannot conflict with the chat bar.
+ * Idleness still retracts it (shouldRetractPanel), and a manual × sticks.
  */
 export function panelAutoOpenAllowed(viewportWidth: number): boolean {
-  return viewportWidth >= DOCK_MIN_VIEWPORT_WIDTH
+  return viewportWidth > 0
 }
 
 /** Never push the app frame over by more than this fraction of the viewport. */
@@ -212,6 +225,29 @@ export function dockedSurfaceStyles(width: number, extending: boolean): CSSPrope
     flexDirection: 'column',
     zIndex: 60,
     pointerEvents: 'auto',
+  }
+}
+
+/**
+ * The phone side surface: a right-edge DRAWER. Full height, thumb-reachable
+ * width, slides in from the edge on the same spring as the dock. While open it
+ * overlays the chat (there is no margin to lease at 390px); closed it is fully
+ * hidden and the chat bar is 100% free.
+ */
+export function drawerSurfaceStyles(extending: boolean): CSSProperties {
+  return {
+    position: 'fixed',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 'min(86vw, 360px)',
+    transform: extending ? 'translateX(102%)' : 'translateX(0)',
+    transition: 'transform 240ms cubic-bezier(0.34, 1.28, 0.44, 1)',
+    display: 'flex',
+    flexDirection: 'column',
+    zIndex: 60,
+    pointerEvents: 'auto',
+    boxShadow: '-12px 0 40px rgba(15, 23, 42, 0.28)',
   }
 }
 

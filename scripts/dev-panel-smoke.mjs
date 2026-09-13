@@ -691,27 +691,29 @@ const el = React.createElement
   step('capsule with onAutoOpen renders null while the panel is open', withHandler === '')
 }
 
-// ── inline live frame: the screen IN the chat (no sidebar, no cover) ────────
+// ── the side dashboard: BESIDE the chat, never in the flow ──────────────────
 
 {
   const {
-    inlineLiveDecision, activitySignature, INLINE_IDLE_COLLAPSE_MS, INLINE_FRAME_HEIGHT,
+    activitySignature, INLINE_FRAME_HEIGHT,
     WINDOW_SHELL_STYLES, overlaySurfaceStyles, panelAutoOpenAllowed,
+    sideDockPlacement, DOCK_MIN_VIEWPORT_WIDTH, drawerSurfaceStyles,
     shouldRetractPanel, PANEL_RETRACT_IDLE_MS, createPanelStore, frameNowUrl,
     sessionMemory, BootCard,
   } = client
 
-  // The expand/collapse matrix.
-  const base = { mode: 'auto', sessionKey: 'b1', lastSessionKey: 'b1', phase: 'streaming', idleMs: 1000, activityChanged: false, challengeBlocking: false, ownedByUser: false }
-  step('inline: streaming + fresh activity expands in chat', inlineLiveDecision({ ...base, activityChanged: true }).expanded === true)
-  step('inline: streaming + idle beyond the threshold collapses', inlineLiveDecision({ ...base, idleMs: INLINE_IDLE_COLLAPSE_MS + 1 }).expanded === false)
-  step('inline: not streaming collapses', inlineLiveDecision({ ...base, phase: 'ready' }).expanded === false)
-  step('inline: a blocking challenge keeps the frame open', inlineLiveDecision({ ...base, challengeBlocking: true, idleMs: 999_999 }).expanded === true)
-  step('inline: a takeover keeps the frame open', inlineLiveDecision({ ...base, ownedByUser: true, idleMs: 999_999 }).expanded === true)
-  step('inline: a manual open survives idleness', inlineLiveDecision({ ...base, mode: 'open', idleMs: 999_999 }).expanded === true)
-  step('inline: a manual close survives fresh activity', inlineLiveDecision({ ...base, mode: 'closed', activityChanged: true }).expanded === false)
-  const rearmed = inlineLiveDecision({ ...base, mode: 'closed', sessionKey: 'b2', activityChanged: true })
-  step('inline: a NEW browser session re-arms auto after a manual close', rearmed.nextMode === 'auto' && rearmed.expanded === true)
+  // Placement matrix: the dashboard lives on the SIDE at every width —
+  // a leased column where there is room, a right-edge drawer where there is not.
+  step('side: wide viewports get the leased dock column', sideDockPlacement(1280) === 'dock' && sideDockPlacement(DOCK_MIN_VIEWPORT_WIDTH) === 'dock')
+  step('side: phone viewports get the right-edge drawer', sideDockPlacement(DOCK_MIN_VIEWPORT_WIDTH - 1) === 'drawer' && sideDockPlacement(390) === 'drawer')
+  step('side: a boot auto-opens the side surface at EVERY width (it cannot conflict with the chat bar)', panelAutoOpenAllowed(390) === true && panelAutoOpenAllowed(1280) === true)
+  const drawer = drawerSurfaceStyles(false)
+  step('the drawer is a right-edge slide-over, full height', drawer.position === 'fixed' && drawer.right === 0 && drawer.top === 0 && drawer.bottom === 0 && drawer.width === 'min(86vw, 360px)')
+  step('the drawer springs in from the edge (extend animation)', drawerSurfaceStyles(true).transform === 'translateX(102%)' && drawer.transform === 'translateX(0)')
+
+  // Auto-follow: idleness folds the side surface away; OFF pins it open.
+  step('side: retracts when a model-opened surface goes idle', shouldRetractPanel({ origin: 'boot', idleMs: PANEL_RETRACT_IDLE_MS + 1, challengeBlocking: false, ownedByUser: false, follow: true }) === true)
+  step('side: auto-follow OFF pins the surface open', shouldRetractPanel({ origin: 'boot', idleMs: 999_999, challengeBlocking: false, ownedByUser: false, follow: false }) === false)
 
   // The activity signature must ignore the free-running capture loop, or
   // "idle" would never happen while a browser is alive.
@@ -743,7 +745,7 @@ const el = React.createElement
 
   // Narrow-viewport policy: the panel never auto-covers a phone; when the user
   // opens it explicitly it is a bottom sheet — the chat stays visible above it.
-  step('panel auto-open is allowed only on wide viewports', panelAutoOpenAllowed(1280) === true && panelAutoOpenAllowed(899) === false)
+  step('panel auto-open is allowed at every width (side surface, never in the flow)', panelAutoOpenAllowed(1280) === true && panelAutoOpenAllowed(390) === true)
   const sheet = overlaySurfaceStyles(420, true)
   step('narrow overlay is a bottom sheet, not a full-screen cover', sheet.position === 'fixed' && sheet.height === '62dvh' && sheet.top === 'auto' && sheet.bottom === 0)
   step('the sheet surface passes touches through to the chat above', sheet.pointerEvents === 'none')
@@ -773,16 +775,16 @@ const el = React.createElement
   const fu = frameNowUrl('tok/en', 7)
   step('frameNowUrl targets the /frame route with token + nonce', fu.includes('/frame?token=tok%2Fen') && fu.includes('n=7'), fu)
 
-  // SSR: only the CURRENT session's boot card hosts the inline frame, and a
-  // collapsed frame renders no <img> and performs no fetch.
+  // SSR: the CURRENT session's boot card carries the side-toggle affordance —
+  // and NO live frame in the message flow (that conflicted with the chat bar).
   sessionMemory.remember('sess-inline1')
   const inlineMeta = client.fromResult('browser_start', { ok: true, session: 'sess-inline1', phase: 'streaming', url: 'https://example.com/' })
   const inlineHtml = renderToString(el(BootCard, { callId: 'ci', toolName: 'browser_start', block: {}, sessionId: 's1', meta: inlineMeta, openPanel() {} }))
-  step('the current boot card renders the inline live toggle', inlineHtml.includes('data-dsh-inline-live="collapsed"') && inlineHtml.includes('expand the live browser view'), inlineHtml.slice(0, 220))
-  step('a collapsed inline frame renders no <img>', !inlineHtml.includes('<img'))
+  step('the current boot card offers the SIDE dashboard', inlineHtml.includes('data-dsh-side-toggle="true"') && />side/.test(inlineHtml), inlineHtml.slice(0, 220))
+  step('the message flow hosts no live frame (chat bar stays free)', !inlineHtml.includes('<img') && !inlineHtml.includes('data-dsh-side-dash'))
   const staleMeta = client.fromResult('browser_start', { ok: true, session: 'sess-other9', phase: 'streaming', url: 'https://example.com/' })
   const staleHtml = renderToString(el(BootCard, { callId: 'cj', toolName: 'browser_start', block: {}, sessionId: 's1', meta: staleMeta, openPanel() {} }))
-  step('a superseded boot card hosts no inline frame', !staleHtml.includes('data-dsh-inline-live'))
+  step('a superseded boot card carries no side toggle', !staleHtml.includes('data-dsh-side-toggle'))
 }
 
 finish()

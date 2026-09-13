@@ -37,13 +37,16 @@ import {
   clampPanelWidth,
   desiredPanelWidth,
   dockedSurfaceStyles,
+  drawerSurfaceStyles,
   overlaySurfaceStyles,
   PANEL_DEFAULT_WIDTH,
   PANEL_LEFT_CLEARANCE,
+  sideDockPlacement,
   type PanelDockLease,
+  type SideDockPlacement,
 } from './panel-dock.js'
 import { BrowserFrame, FRAME_STYLE_CHROME, FRAME_STYLE_OPTIONS, type FrameStyle } from './browser-frame.js'
-import { activitySignature } from './inline-live.js'
+import { activitySignature, InlineLiveFrame } from './inline-live.js'
 import { LiveViewport, useStreamSession, type StreamSession } from './live-viewport.js'
 import { installCapsuleKeyframes } from './status-capsule.js'
 import { bootLabel, reducePhase, reduceStatus, resetBoot, shouldAutoOpen, type BootState } from './boot-sequence.js'
@@ -164,9 +167,12 @@ export function shouldRetractPanel(input: {
   idleMs: number
   challengeBlocking: boolean
   ownedByUser: boolean
+  /** auto-follow OFF pins the side surface open, however idle the model is. */
+  follow?: boolean
 }): boolean {
   if (input.origin !== 'boot' && input.origin !== 'card') return false
   if (input.challengeBlocking || input.ownedByUser) return false
+  if (input.follow === false) return false
   return input.idleMs >= PANEL_RETRACT_IDLE_MS
 }
 
@@ -309,6 +315,12 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   const [debugOpen, setDebugOpen] = useState(false)
   const [launching, setLaunching] = useState(false)
   const [narrow, setNarrow] = useState(false)
+  /** Where the side surface sits: leased column (dock) or phone slide-over. */
+  const [placement, setPlacement] = useState<SideDockPlacement>('dock')
+  /** 'dash' = the harness dashboard card; 'panel' = the full control panel. */
+  const [sideView, setSideView] = useState<'dash' | 'panel'>('dash')
+  /** Auto-follow: OFF pins the side surface open however idle the model is. */
+  const [follow, setFollow] = useState(true)
 
   const bootStatusRef = useRef<BrowserStatus | undefined>(undefined)
   const autoSession = request.browserSession ?? bootStatusRef.current?.session?.id
@@ -382,10 +394,10 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     if (prev === null || prev.sig !== sig) lastActivity.current = { sig, at: Date.now() }
   }, [status])
 
-  const retractView = useRef({ status, boot, request })
+  const retractView = useRef({ status, boot, request, follow })
   useEffect(() => {
-    retractView.current = { status, boot, request }
-  }, [status, boot, request])
+    retractView.current = { status, boot, request, follow }
+  }, [status, boot, request, follow])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -394,14 +406,15 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
       if (lastActivity.current === null) return
       const view = retractView.current
       const idleMs = Date.now() - lastActivity.current.at
-      if (
-        shouldRetractPanel({
-          origin: view.request.origin,
-          idleMs,
-          challengeBlocking: view.boot.challenge?.blocking === true,
-          ownedByUser: view.status?.takeover !== undefined,
-        })
-      ) {
+        if (
+          shouldRetractPanel({
+            origin: view.request.origin,
+            idleMs,
+            challengeBlocking: view.boot.challenge?.blocking === true,
+            ownedByUser: view.status?.takeover !== undefined,
+            follow: view.follow,
+          })
+        ) {
         store.close()
       }
     }, PANEL_RETRACT_CHECK_MS)
@@ -418,6 +431,14 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   useEffect(() => {
     const doc = containerRef.current?.ownerDocument ?? document
     const viewportWidth = doc.defaultView?.innerWidth ?? 1440
+    // Phone: the drawer overlays by design — there is no margin to lease and
+    // nothing to push over. Never take the dock lease in drawer placement.
+    if (placement === 'drawer') {
+      setOverlay(false)
+      leaseRef.current?.release()
+      leaseRef.current = null
+      return
+    }
     // Not enough room for side-by-side: overlay instead of squeezing the
     // conversation into an unreadable column.
     if (viewportWidth - effectiveWidth < PANEL_LEFT_CLEARANCE) {
@@ -441,7 +462,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
       // Released on unmount and on width change (the effect re-runs and
       // re-claims); the lease restores exactly what it found.
     }
-  }, [effectiveWidth])
+  }, [effectiveWidth, placement])
 
   // Release the dock when the panel closes or the plugin unloads.
   useEffect(
@@ -459,7 +480,10 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   useEffect(() => {
     const win = containerRef.current?.ownerDocument?.defaultView
     if (!win) return
-    const measure = (): void => setNarrow(win.innerWidth < PANEL_NARROW_PX)
+    const measure = (): void => {
+      setNarrow(win.innerWidth < PANEL_NARROW_PX)
+      setPlacement(sideDockPlacement(win.innerWidth))
+    }
     measure()
     win.addEventListener('resize', measure)
     return () => win.removeEventListener('resize', measure)
@@ -637,15 +661,63 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   const tabs = status?.session?.tabs ?? []
   const viewport = status?.session?.viewport
 
+  // ── the side dashboard: the PRIMARY watch surface ───────────────────────
+  // Wide → the leased dock column; phone → the right-edge drawer. Either way
+  // the harness-light dashboard card fills the surface and the chat column
+  // (with its composer bar) stays exactly as the harness laid it out.
+  if (sideView === 'dash' && !showingHome) {
+    const dashSurface = placement === 'drawer'
+      ? drawerSurfaceStyles(boot.extending)
+      : overlay
+        ? overlaySurfaceStyles(effectiveWidth, false)
+        : dockedSurfaceStyles(effectiveWidth, boot.extending)
+    return (
+      <div
+        ref={containerRef}
+        style={dashSurface}
+        data-color-scheme={props.scheme}
+        data-dsh-side-surface={placement === 'drawer' ? 'drawer' : overlay ? 'overlay' : 'dock'}
+        onTransitionEnd={() => setBoot(previous => (previous.extending ? { ...previous, extending: false } : previous))}
+      >
+        {!overlay && placement === 'dock' ? (
+          <div
+            style={resizeHandleStyles}
+            onPointerDown={startResize}
+            onDoubleClick={() => { setWidth(PANEL_DEFAULT_WIDTH); setDragged(false) }}
+            role="separator"
+            aria-orientation="vertical"
+            title="drag to resize · double-click to reset"
+          />
+        ) : null}
+        <InlineLiveFrame
+          sessionId={request.sessionId ?? ''}
+          session={session}
+          fill
+          follow={follow}
+          onFollowChange={setFollow}
+          onOpenPanel={() => setSideView('panel')}
+          onRequestClose={() => store.closeByUser(request.browserSession)}
+        />
+      </div>
+    )
+  }
+
   return (
     <div
       ref={containerRef}
-      style={overlay ? overlaySurfaceStyles(effectiveWidth, narrow) : dockedSurfaceStyles(effectiveWidth, boot.extending)}
+      style={
+        placement === 'drawer'
+          ? overlaySurfaceStyles(effectiveWidth, true)
+          : overlay
+            ? overlaySurfaceStyles(effectiveWidth, narrow)
+            : dockedSurfaceStyles(effectiveWidth, boot.extending)
+      }
       data-color-scheme={props.scheme}
+      data-dsh-side-surface={placement === 'drawer' ? 'sheet' : overlay ? 'overlay' : 'dock'}
       onTransitionEnd={() => setBoot(previous => (previous.extending ? { ...previous, extending: false } : previous))}
     >
-      <div style={overlay ? overlayCardStyles(narrow ? '100%' : effectiveWidth) : dockedCardStyles}>
-        {!overlay && !narrow ? <div style={resizeHandleStyles} onPointerDown={startResize} onDoubleClick={() => { setWidth(PANEL_DEFAULT_WIDTH); setDragged(false) }} role="separator" aria-orientation="vertical" title="drag to resize · double-click to reset" /> : null}
+      <div style={overlay || placement === 'drawer' ? overlayCardStyles(narrow || placement === 'drawer' ? '100%' : effectiveWidth) : dockedCardStyles}>
+        {!overlay && !narrow && placement !== 'drawer' ? <div style={resizeHandleStyles} onPointerDown={startResize} onDoubleClick={() => { setWidth(PANEL_DEFAULT_WIDTH); setDragged(false) }} role="separator" aria-orientation="vertical" title="drag to resize · double-click to reset" /> : null}
 
         <SessionTabStrip
           sessions={status?.sessions ?? []}
@@ -701,6 +773,15 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
               />
             </svg>
           ) : null}
+          <button
+            type="button"
+            style={iconButtonStyles}
+            aria-label="back to the side dashboard"
+            title="back to the side dashboard"
+            onClick={() => setSideView('dash')}
+          >
+            ▤
+          </button>
           <select
             style={selectStyles}
             value={status?.frames?.source ?? 'screenshot'}

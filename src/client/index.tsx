@@ -57,10 +57,9 @@ export { compatMode, PROTOCOL_VERSION } from '../compat.js'
 export { browserPanelStore, createPanelStore, mountBrowserPanelHost, usePanelRequest, shouldRetractPanel, PANEL_RETRACT_IDLE_MS, PANEL_RETRACT_CHECK_MS, type PanelHost, type PanelRequest, type PanelStore } from './panel-host.js'
 export { BrowserCard, BootCard, ChallengeCard, describeTarget, type BrowserCardProps, type CardTone } from './cards.js'
 export {
-  InlineLiveFrame, inlineLiveDecision, activitySignature,
-  INLINE_IDLE_COLLAPSE_MS, INLINE_CHECK_MS, INLINE_FRAME_HEIGHT,
+  InlineLiveFrame, activitySignature, INLINE_FRAME_HEIGHT,
   dashboardZoomHeight, DASHBOARD_ZOOMS,
-  type InlineMode, type InlineLiveDecision, type InlineLiveFrameProps, type DashboardZoom,
+  type InlineLiveFrameProps, type DashboardZoom,
 } from './inline-live.js'
 export { CARD_STYLES } from './card-styles.js'
 export { CardBoundary } from './card-boundary.js'
@@ -194,7 +193,8 @@ function hostSyncedStatusCapsule(): (props: InputDockProps) => ReactNode {
           autoOpenTimer = setTimeout(() => {
             autoOpenTimer = undefined
             // Checked at FIRE time: the phone may have rotated / resized since
-            // the capsule popped. Narrow → the inline frame is the surface.
+            // the capsule popped. The side surface (dock or drawer) auto-opens
+            // at every width; idleness retracts it again.
             if (!panelAutoOpenAllowed(currentViewportWidth())) return
             browserPanelStore.openIfIdle({ sessionId: props.sessionId, origin: 'boot' })
           }, AUTO_OPEN_DELAY_MS)

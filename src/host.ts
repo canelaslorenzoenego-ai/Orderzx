@@ -187,6 +187,10 @@ export class BrowserHostController {
   #disposed = false
   #config: BrowserConfig
   #onEvent: ((event: HostEvent) => void) | undefined
+  // Multicast tap on the same bus as #onEvent. The constructor callback belongs
+  // to whoever owns the host; late consumers (the routes' frame streams, which
+  // must close when their session dies) subscribe here instead of stealing it.
+  #eventSubscribers = new Set<(event: HostEvent) => void>()
   #random = createRandom()
 
   constructor(options: HostOptions) {
@@ -1367,6 +1371,23 @@ export class BrowserHostController {
     } catch {
       // An observer that throws must not break the controller.
     }
+    for (const listener of [...this.#eventSubscribers]) {
+      try {
+        listener(event)
+      } catch {
+        // Same contract as #onEvent: a throwing subscriber is isolated.
+      }
+    }
+  }
+
+  /**
+   * Multicast event tap. Returns an unsubscribe function. Used by the routes'
+   * frame streams to close themselves when their session is torn down — the
+   * constructor `onEvent` callback is single-owner and already taken.
+   */
+  subscribeEvents(listener: (event: HostEvent) => void): () => void {
+    this.#eventSubscribers.add(listener)
+    return () => { this.#eventSubscribers.delete(listener) }
   }
 
   #checkUrlPolicy(url: string): ActionResult {

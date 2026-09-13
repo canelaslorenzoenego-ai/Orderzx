@@ -157,8 +157,15 @@ export class Routes implements RouteHandlers {
       const unsubscribe = this.host.subscribeFrames(payload.session, frame => {
         if (!writer.write(frame)) unsubscribe()
       })
+      // Session teardown must END the stream: frame subscribers are cleared
+      // silently, so without this the response hangs open forever and every
+      // consumer (panel iframe, fetch reader) blocks on a dead session.
+      const unsubscribeEvents = this.host.subscribeEvents?.(event => {
+        if (event.type === 'closed' && event.session === payload.session) onClose()
+      }) ?? (() => undefined)
       const onClose = (): void => {
         unsubscribe()
+        unsubscribeEvents()
         writer.close()
       }
       res.on('close', onClose)

@@ -41,7 +41,7 @@ const access = new AccessController(async () => KEY)
 
 // ── stub host ───────────────────────────────────────────────────────────────
 
-const state = { takeover: false, calls: [], interactions: [] }
+const state = { takeover: false, calls: [], interactions: [], eventListeners: [] }
 
 function record(name, result) {
   return (...args) => {
@@ -68,6 +68,12 @@ const host = {
   // one here is the faithful stub, not a convenience.
   latestFrame: () => ({ data: new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')), mime: 'image/png', width: 1, height: 1, sequence: 1, at: Date.now(), source: 'screenshot' }),
   subscribeFrames: () => () => {},
+  // Captures the routes' session-end tap so the stream fence can fire the
+  // production 'closed' event and assert the response actually terminates.
+  subscribeEvents: listener => {
+    state.eventListeners.push(listener)
+    return () => { state.eventListeners = state.eventListeners.filter(l => l !== listener) }
+  },
   beginTakeover: record('beginTakeover', () => { state.takeover = true; return { ok: true } }),
   endTakeover: record('endTakeover', () => { state.takeover = false; return { ok: true } }),
   applyHumanControl: record('applyHumanControl'),
@@ -315,6 +321,23 @@ state.takeover = false
   const response = await fetch(`${base}${protocol.STREAM_ROUTE_PREFIX}?token=${encodeURIComponent(streamToken)}`, { signal: controller.signal })
   step('stream opens with a valid token', response.status === 200, `got ${response.status}`)
   step('stream content-type is multipart/x-mixed-replace', (response.headers.get('content-type') ?? '').startsWith('multipart/x-mixed-replace'), response.headers.get('content-type') ?? '')
+
+  // Teardown while streaming: the host publishes 'closed' for the session and
+  // the open response MUST terminate (final boundary + end) — otherwise every
+  // consumer hangs on a dead session forever (bug #34).
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let streamText = ''
+  const drainDone = (async () => {
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) return true
+      streamText += decoder.decode(value, { stream: true })
+    }
+  })().catch(() => true)
+  for (const listener of [...state.eventListeners]) listener({ type: 'closed', session: SESSION, reason: 'test teardown' })
+  const ended = await Promise.race([drainDone, new Promise(resolve => setTimeout(() => resolve(false), 3_000))])
+  step('an open stream terminates when its session closes', ended === true && /--dsh-browser-frame--/.test(streamText), `ended ${ended}, final boundary ${/--dsh-browser-frame--/.test(streamText)}`)
   controller.abort()
 }
 

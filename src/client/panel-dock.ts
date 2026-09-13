@@ -53,13 +53,24 @@ export function sideDockPlacement(viewportWidth: number): SideDockPlacement {
 export const PHONE_DOCK_FRACTION = 0.54
 
 /**
- * The dock width at a viewport width. Wide screens honour the user/landscape
- * width; phones get the split fraction (bounded so the chrome stays usable
- * and the chat keeps a readable column). Pure, for the smoke suite.
+ * Bounds for a phone split: the dashboard gets at least 180px (chrome stays
+ * usable) and can grow until the chat column reaches the lease's clearance
+ * floor (dockLeftClearance) — the drag can never push the layout into the
+ * overlay fallback. Pure, for the smoke suite.
  */
-export function sideDockWidth(viewportWidth: number, desiredWidth: number): number {
+export function clampPhoneSplit(viewportWidth: number, px: number): number {
+  const max = Math.min(360, Math.max(180, viewportWidth - dockLeftClearance(viewportWidth)))
+  return Math.max(180, Math.min(max, Math.round(px)))
+}
+
+/**
+ * The dock width at a viewport width. Wide screens honour the user/landscape
+ * width; phones get the split fraction — or the user's drag position — bounded
+ * by clampPhoneSplit so both columns stay usable. Pure, for the smoke suite.
+ */
+export function sideDockWidth(viewportWidth: number, desiredWidth: number, phoneUserWidth?: number): number {
   if (viewportWidth >= DOCK_MIN_VIEWPORT_WIDTH) return desiredWidth
-  return Math.min(360, Math.max(180, Math.round(viewportWidth * PHONE_DOCK_FRACTION)))
+  return clampPhoneSplit(viewportWidth, phoneUserWidth ?? Math.round(viewportWidth * PHONE_DOCK_FRACTION))
 }
 
 /**

@@ -37,14 +37,14 @@
  * @module @dsh-community/dsh-browser/client/inline-live
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { BrowserStatus } from '../protocol.js'
+import type { BrowserStatus, ControlMessage } from '../protocol.js'
 import { STREAMING_PHASES } from '../protocol.js'
 import { BrowserFrame, FRAME_STYLE_OPTIONS, NavIcon, type FrameStyle } from './browser-frame.js'
 import { bootLabel, reduceStatus, resetBoot, type BootState } from './boot-sequence.js'
 import { LiveViewport, useStreamSession, type StreamSession } from './live-viewport.js'
-import { captureUrl, requestCaptureGrant, sendControl, type FetchLike } from './wire.js'
+import { captureUrl, requestCaptureGrant, sendChallengeOutcome, sendControl, type FetchLike } from './wire.js'
 import { useEffect } from 'react'
 
 // ── pure helpers ────────────────────────────────────────────────────────────
@@ -145,6 +145,13 @@ function DashboardCard(props: InlineLiveFrameProps & { session: StreamSession })
 
   const [addressDraft, setAddressDraft] = useState('')
   const fps = status?.frames?.fps ?? 0
+  // fps sparkline: same 24-poll ring the full panel draws, shrunk to the header.
+  const fpsRing = useRef<number[]>([])
+  useEffect(() => {
+    const value = status?.frames?.fps
+    if (typeof value === 'number' && value > 0) fpsRing.current = [...fpsRing.current, value].slice(-24)
+  }, [status?.frames?.fps])
+  const lastAction = status?.recent?.[status.recent.length - 1]
   const streaming = (STREAMING_PHASES as readonly string[]).includes(status?.phase ?? 'idle')
   const activeUrl = tabs[status?.session?.activeTab ?? 0]?.url ?? ''
   const controlToken = session.controlToken
@@ -152,8 +159,30 @@ function DashboardCard(props: InlineLiveFrameProps & { session: StreamSession })
   const canCapture = canControl && (status?.frames?.lastCapturePath ?? null) !== null
 
   const nav = (action: 'back' | 'forward' | 'reload' | 'stop'): void => {
+    control({ kind: 'nav', action })
+  }
+
+  /** One signed-control path for everything the dash drives itself. */
+  const control = (msg: ControlMessage): void => {
     if (!controlToken) return
-    void sendControl(props.fetcher ?? (fetch as unknown as FetchLike), controlToken, { kind: 'nav', action }).catch(() => undefined)
+    void sendControl(props.fetcher ?? (fetch as unknown as FetchLike), controlToken, msg).catch(() => undefined)
+  }
+
+  const address = (url: string): void => {
+    control({ kind: 'address', url })
+    setAddressDraft('')
+  }
+
+  const tab = (action: 'select' | 'close' | 'new', index?: number): void => {
+    control({ kind: 'tab', action, ...(index !== undefined ? { index } : {}) })
+  }
+
+  const resolveChallenge = (outcome: 'passed' | 'failed' | 'abandoned'): void => {
+    const id = status?.challenge?.id
+    if (!id || !controlToken) return
+    void sendChallengeOutcome(props.fetcher ?? (fetch as unknown as FetchLike), controlToken, id, outcome)
+      .then(() => session.refresh())
+      .catch(() => undefined)
   }
 
   const capture = (): void => {
@@ -177,6 +206,27 @@ function DashboardCard(props: InlineLiveFrameProps & { session: StreamSession })
           <span style={dashDotStyles(streaming)} aria-hidden="true" />
           <span style={dashTitleStyles}>Live browser</span>
         </span>
+        {fpsRing.current.length > 1 ? (
+          <svg
+            width="40"
+            height="14"
+            viewBox="0 0 40 14"
+            role="img"
+            aria-label={`frames per second over the last ${fpsRing.current.length} polls`}
+            style={{ flex: '0 0 auto' }}
+          >
+            <title>{`fps ${fpsRing.current[fpsRing.current.length - 1]}`}</title>
+            <polyline
+              points={fpsRing.current.map((value, index) => `${1 + (index / 23) * 38},${(13 - Math.min(1, value / 30) * 11).toFixed(1)}`).join(' ')}
+              fill="none"
+              stroke="#22a06b"
+              strokeWidth="1.2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              opacity="0.9"
+            />
+          </svg>
+        ) : null}
         <button
           type="button"
           style={followChipStyles(props.follow)}
@@ -280,8 +330,8 @@ function DashboardCard(props: InlineLiveFrameProps & { session: StreamSession })
           addressDraft={addressDraft}
           onAddressDraftChange={setAddressDraft}
           onNav={nav}
-          onAddress={() => props.onOpenPanel?.()}
-          onTab={() => undefined}
+          onAddress={address}
+          onTab={tab}
           onToggleTakeover={() => props.onOpenPanel?.()}
           onCapture={capture}
         >
@@ -304,12 +354,29 @@ function DashboardCard(props: InlineLiveFrameProps & { session: StreamSession })
         </BrowserFrame>
       </div>
 
+      {/* ── challenge handoff: unblock the agent without opening the panel ── */}
+      {status?.challenge && status.challenge.state === 'awaiting-user' ? (
+        <div style={handoffRowStyles} data-dash-handoff={status.challenge.blocking === true ? 'blocking' : 'waiting'}>
+          <span style={handoffTextStyles}>
+            <strong>{status.challenge.vendor}</strong> needs a human — the agent is paused
+          </span>
+          <button type="button" style={handoffBtnStyles('#3fb950')} onClick={() => resolveChallenge('passed')}>solved</button>
+          <button type="button" style={handoffBtnStyles('#d29922')} onClick={() => resolveChallenge('failed')}>failed</button>
+          <button type="button" style={handoffBtnStyles('#8a8a94')} onClick={() => resolveChallenge('abandoned')}>skip</button>
+        </div>
+      ) : null}
+
       {/* ── status row: the reference's "● live" ── */}
       <div style={dashStatusStyles}>
         <span style={statusDotStyles(streaming)} aria-hidden="true" />
         <span style={statusLabelStyles}>{streaming ? 'live' : bootLabel(boot)}</span>
         {streaming ? <span style={statusMetaStyles}>{fps} fps · {status?.frames?.source ?? 'screenshot'}</span> : null}
         <span style={statusMetaStyles}>{status?.takeover ? 'you are driving' : 'agent driving'}</span>
+        {lastAction ? (
+          <span style={lastActionStyles} data-dash-last-action title={lastAction.summary}>
+            {lastAction.summary.length > 26 ? `${lastAction.summary.slice(0, 26)}…` : lastAction.summary}
+          </span>
+        ) : null}
         {status?.recording?.active ? <span style={recChipStyles}>● REC {status.recording.steps}</span> : null}
       </div>
     </div>
@@ -556,4 +623,49 @@ const recChipStyles: CSSProperties = {
   color: '#d0342c',
   fontWeight: 700,
   fontVariantNumeric: 'tabular-nums',
+}
+
+const handoffRowStyles: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 6,
+  padding: '6px 10px',
+  background: 'rgba(210, 153, 34, 0.12)',
+  borderTop: '1px solid rgba(210, 153, 34, 0.35)',
+  fontSize: 11,
+  color: 'var(--dsw-text-primary, #1f2329)',
+  flex: '0 0 auto',
+}
+
+const handoffTextStyles: CSSProperties = {
+  flex: '1 1 auto',
+  minWidth: 0,
+}
+
+function handoffBtnStyles(color: string): CSSProperties {
+  return {
+    flex: '0 0 auto',
+    padding: '3px 8px',
+    borderRadius: 6,
+    border: `1px solid ${color}`,
+    background: 'transparent',
+    color,
+    font: 'inherit',
+    fontSize: 10.5,
+    fontWeight: 600,
+    cursor: 'pointer',
+  }
+}
+
+const lastActionStyles: CSSProperties = {
+  flex: '0 1 auto',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  color: 'var(--dsw-text-tertiary, #6b7280)',
+  background: 'var(--dsw-bg-tertiary, #f2f3f5)',
+  borderRadius: 6,
+  padding: '1px 6px',
 }

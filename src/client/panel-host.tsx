@@ -35,6 +35,7 @@ import { FRAME_SOURCES } from '../protocol.js'
 import {
   claimPanelDock,
   clampPanelWidth,
+  clampPhoneSplit,
   desiredPanelWidth,
   dockedSurfaceStyles,
   DOCK_MIN_VIEWPORT_WIDTH,
@@ -318,6 +319,8 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   const [vw, setVw] = useState<number>(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
   /** 'dash' = the harness dashboard card; 'panel' = the full control panel. */
   const [sideView, setSideView] = useState<'dash' | 'panel'>('dash')
+  /** Phone split width the user dragged to; undefined = the 54% default. */
+  const [phoneWidth, setPhoneWidth] = useState<number | undefined>(undefined)
   /** Auto-follow: OFF pins the side surface open however idle the model is. */
   const [follow, setFollow] = useState(true)
 
@@ -433,7 +436,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     // The dock EXTENDS the layout at every width: on a phone the leased
     // margin turns the window into a two-column split (chat left, dashboard
     // right) instead of overlapping anything.
-    const dockWidth = sideDockWidth(viewportWidth, effectiveWidth)
+    const dockWidth = sideDockWidth(viewportWidth, effectiveWidth, phoneWidth)
     // Not enough room for side-by-side even after scaling: overlay rather
     // than squeezing the conversation into an unreadable sliver.
     if (viewportWidth - dockWidth < dockLeftClearance(viewportWidth)) {
@@ -457,7 +460,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
       // Released on unmount and on width change (the effect re-runs and
       // re-claims); the lease restores exactly what it found.
     }
-  }, [effectiveWidth, vw])
+  }, [effectiveWidth, vw, phoneWidth])
 
   // Release the dock when the panel closes or the plugin unloads.
   useEffect(
@@ -635,7 +638,24 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
     [fetcher, session, status, controlToken],
   )
 
-  // ── drag handle ───────────────────────────────────────────────────────────
+  // ── drag handles ──────────────────────────────────────────────────────────
+  // Phone split: dragging the dock's LEFT edge writes the leased margin
+  // directly (clamped), so the two-column split is user-tunable by thumb.
+  const startPhoneResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const doc = containerRef.current?.ownerDocument ?? document
+    const viewportNow = doc.defaultView?.innerWidth ?? vw
+    const move = (moveEvent: PointerEvent): void => {
+      setPhoneWidth(clampPhoneSplit(viewportNow, viewportNow - moveEvent.clientX))
+    }
+    const up = (): void => {
+      doc.removeEventListener('pointermove', move)
+      doc.removeEventListener('pointerup', up)
+    }
+    doc.addEventListener('pointermove', move)
+    doc.addEventListener('pointerup', up)
+  }, [vw])
+
   const startResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const startX = event.clientX
     const startWidth = effectiveWidth
@@ -661,7 +681,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
   // the harness-light dashboard card fills the surface and the chat column
   // (with its composer bar) stays exactly as the harness laid it out.
   if (sideView === 'dash' && !showingHome) {
-    const dockWidth = sideDockWidth(vw, effectiveWidth)
+    const dockWidth = sideDockWidth(vw, effectiveWidth, phoneWidth)
     const dashSurface = overlay
       ? overlaySurfaceStyles(effectiveWidth, false)
       : dockedSurfaceStyles(dockWidth, boot.extending)
@@ -681,6 +701,17 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
             role="separator"
             aria-orientation="vertical"
             title="drag to resize · double-click to reset"
+          />
+        ) : null}
+        {!overlay && vw < DOCK_MIN_VIEWPORT_WIDTH ? (
+          <div
+            style={phoneSplitHandleStyles}
+            onPointerDown={startPhoneResize}
+            onDoubleClick={() => setPhoneWidth(undefined)}
+            role="separator"
+            aria-orientation="vertical"
+            data-dash-split-handle="true"
+            title="drag to resize the split · double-tap for the 54% default"
           />
         ) : null}
         <InlineLiveFrame
@@ -704,7 +735,7 @@ function BrowserPanel(props: BrowserPanelProps): ReactNode {
           ? overlaySurfaceStyles(effectiveWidth, true)
           : overlay
             ? overlaySurfaceStyles(effectiveWidth, false)
-            : dockedSurfaceStyles(sideDockWidth(vw, effectiveWidth), boot.extending)
+            : dockedSurfaceStyles(sideDockWidth(vw, effectiveWidth, phoneWidth), boot.extending)
       }
       data-color-scheme={props.scheme}
       data-dsh-side-surface={narrow ? 'sheet' : overlay ? 'overlay' : 'dock'}
@@ -1027,6 +1058,23 @@ const resizeHandleStyles: CSSProperties = {
   cursor: 'col-resize',
   zIndex: 2,
   background: 'transparent',
+}
+
+/**
+ * Phone split divider: a wider, thumb-reachable strip on the dock's left edge
+ * with a faint gradient so it reads as "pull me". touch-action none keeps the
+ * browser from stealing the drag for scroll/pull-to-refresh.
+ */
+const phoneSplitHandleStyles: CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  bottom: 0,
+  width: 12,
+  cursor: 'col-resize',
+  touchAction: 'none',
+  zIndex: 3,
+  background: 'linear-gradient(to left, rgba(15, 23, 42, 0.22), rgba(15, 23, 42, 0))',
 }
 
 const compatBannerStyles: CSSProperties = {

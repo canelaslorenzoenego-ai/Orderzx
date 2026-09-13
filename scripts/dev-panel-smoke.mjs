@@ -698,9 +698,10 @@ const el = React.createElement
     activitySignature, INLINE_FRAME_HEIGHT,
     WINDOW_SHELL_STYLES, overlaySurfaceStyles, panelAutoOpenAllowed,
     sideDockPlacement, DOCK_MIN_VIEWPORT_WIDTH, sideDockWidth, dockLeftClearance,
+    clampPhoneSplit,
     PHONE_DOCK_FRACTION, PANEL_LEFT_CLEARANCE,
     shouldRetractPanel, PANEL_RETRACT_IDLE_MS, createPanelStore, frameNowUrl,
-    sessionMemory, BootCard,
+    sessionMemory, BootCard, InlineLiveFrame, resetOverlay,
   } = client
 
   // Placement matrix: the dashboard EXTENDS the layout at every width — the
@@ -711,6 +712,26 @@ const el = React.createElement
   step('side: the split is bounded so both columns stay usable', sideDockWidth(320, 900) === 180 && sideDockWidth(660, 900) === 356 && sideDockWidth(1280, 460) === 460)
   step('side: the chat clearance floor scales on phones (lease holds, no overlay)', dockLeftClearance(390) === Math.round(390 * 0.42) && 390 - sideDockWidth(390, 720) >= dockLeftClearance(390) && dockLeftClearance(1280) === PANEL_LEFT_CLEARANCE)
   step('side: a boot auto-opens the side surface at EVERY width (it cannot conflict with the chat bar)', panelAutoOpenAllowed(390) === true && panelAutoOpenAllowed(1280) === true)
+  step('the phone split divider drag is clamped both ways (never into the overlay fallback)', clampPhoneSplit(390, 999) === 226 && clampPhoneSplit(390, 50) === 180 && clampPhoneSplit(390, 211) === 211 && 390 - clampPhoneSplit(390, 999) >= dockLeftClearance(390))
+  step('a dragged phone split width wins over the 54% default', sideDockWidth(390, 720, 200) === 200 && sideDockWidth(390, 720) === 211)
+
+  // The dash is a CONTROL surface, not just a view: challenge handoff, the
+  // last model action, and the browser's own tabs all render in the card.
+  const fakeSession = {
+    status: {
+      phase: 'streaming',
+      frames: { fps: 4, source: 'screenshot' },
+      session: { id: 'b1', activeTab: 0, viewport: { width: 1280, height: 720 }, tabs: [{ index: 0, url: 'https://a.test/', title: 'TabA', active: true }, { index: 1, url: 'https://b.test/', title: 'TabB', active: false }] },
+      recent: [{ ts: 1, tool: 'browser_click', summary: 'click "play the demo video"', ok: true }],
+      challenge: { id: 'ch1', vendor: 'cloudflare', state: 'awaiting-user', blocking: true },
+    },
+    streamUrl: '', pollUrl: '', phase: 'streaming', scope: 'view',
+    overlay: resetOverlay(), gesture: null, onLoad() {}, error: null, controlToken: 'tok',
+  }
+  const dashHtml = renderToString(el(InlineLiveFrame, { sessionId: 's1', session: fakeSession, follow: true, onFollowChange() {}, fetcher: async () => { throw new Error('no fetch during SSR') } }))
+  step('the dash carries an inline challenge handoff row (unblock without the panel)', dashHtml.includes('data-dash-handoff="blocking"') && dashHtml.includes('>solved<') && dashHtml.includes('>failed<') && dashHtml.includes('>skip<'), dashHtml.slice(0, 0))
+  step('the dash shows the last model action as a chip', dashHtml.includes('data-dash-last-action') && dashHtml.includes('play the demo vid'))
+  step('the dash renders the browser tab strip from status', dashHtml.includes('>TabA<') && dashHtml.includes('>TabB<'))
 
   // Auto-follow: idleness folds the side surface away; OFF pins it open.
   step('side: retracts when a model-opened surface goes idle', shouldRetractPanel({ origin: 'boot', idleMs: PANEL_RETRACT_IDLE_MS + 1, challengeBlocking: false, ownedByUser: false, follow: true }) === true)

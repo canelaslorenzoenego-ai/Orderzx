@@ -22,7 +22,7 @@
  */
 
 import type { BootPhase, BrowserMeta, ChallengeRecord, ToolName } from '../protocol.js'
-import { BOOT_PHASES, CARD_TOOLS } from '../protocol.js'
+import { BOOT_PHASES, CARD_TOOLS, TOOL_NAMES } from '../protocol.js'
 
 /** Meta plus what the card needs to render a refusal or a PTC replay honestly. */
 export interface HydratedMeta extends BrowserMeta {
@@ -81,7 +81,10 @@ export function resolveBrowserMeta(
   const tool = cardToolOf(toolName)
   const projected = isRecord(settled.meta) ? normalizeMeta(settled.meta as Partial<BrowserMeta>, tool) : undefined
   if (projected) return { meta: { ...projected, replayed: false }, source: 'meta' }
-  if (!tool) return undefined
+  // Replay is broader than cards: the host also projects presentationMeta for
+  // see and act (no dedicated card, but the meta still rides the block and a
+  // nested PTC call must hydrate the identical shape — twin sync enforces it).
+  if (!tool && toolName !== TOOL_NAMES.see && toolName !== TOOL_NAMES.act) return undefined
 
   for (const item of Array.isArray(settled.content) ? settled.content : []) {
     if (!isRecord(item) || item.type !== 'text' || typeof item.text !== 'string') continue
@@ -92,7 +95,7 @@ export function resolveBrowserMeta(
       continue
     }
     if (!isRecord(value)) continue
-    const hydrated = fromResult(tool, value)
+    const hydrated = fromResult((tool ?? toolName) as ToolName, value)
     if (hydrated) return { meta: hydrated, source: 'hydrated' }
   }
   return undefined
@@ -205,6 +208,55 @@ export function fromResult(tool: ToolName, value: Record<string, unknown>): Hydr
         },
         refusal,
         outcome,
+      )
+    }
+
+    case TOOL_NAMES.see: {
+      // tool-support.captureMeta — NOTE the host see meta claims tool
+      // 'browser_observe' (captureMeta hardcodes it), summary 'see — N marks'.
+      const url = stringAt(value, 'url')
+      const title = stringAt(value, 'title')
+      const capturePath = stringAt(value, 'capturePath')
+      const viewport = objectAt(value, 'viewport')
+      const width = numberAt(viewport, 'width')
+      const height = numberAt(viewport, 'height')
+      const challenge = challengeAt(value)
+      const markCount = numberAt(value, 'markCount')
+      return finish(
+        {
+          tool: CARD_TOOLS.observe,
+          phase: 'streaming',
+          ...(url ? { url } : {}),
+          ...(title ? { title } : {}),
+          ...(capturePath ? { capturePath } : {}),
+          ...(width !== undefined ? { width } : {}),
+          ...(height !== undefined ? { height } : {}),
+          ...(challenge ? { challenge } : {}),
+          summary: `see — ${markCount ?? 0} marks`,
+        },
+        refusal,
+      )
+    }
+
+    case TOOL_NAMES.act: {
+      // tools.ts: { tool, phase:'streaming', url?, summary }
+      const url = stringAt(value, 'url')
+      const matched = stringAt(value, 'matched')
+      const action = stringAt(value, 'action')
+      const summary =
+        ok === true
+          ? `act · ${matched ?? action ?? 'done'}`
+          : Array.isArray(value.candidates)
+            ? `act ambiguous — ${String((value.candidates as unknown[]).length)} candidates`
+            : `act refused: ${message ?? refused ?? '?'}`
+      return finish(
+        {
+          tool,
+          phase: 'streaming',
+          ...(url ? { url } : {}),
+          summary,
+        },
+        refusal,
       )
     }
 

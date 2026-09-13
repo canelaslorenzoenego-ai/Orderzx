@@ -323,6 +323,16 @@ const el = React.createElement
       ['browser_challenge', { ok: true, detection: { present: false } }],
       ['browser_handoff', { ok: true, outcome: 'passed', url: 'https://example.com/' }],
       ['browser_handoff', { ok: true, outcome: 'timeout' }],
+      // refusal + replay-surface coverage: the host projects meta for see/act
+      // too, so a nested PTC call must hydrate the identical shape.
+      ['browser_handoff', { ok: false, refused: 'no-session', message: 'gone' }],
+      ['browser_observe', { ok: false, refused: 'pointer-owned', message: 'human driving' }],
+      ['browser_challenge', { ok: false, refused: 'no-session', message: 'gone' }],
+      ['browser_see', { ok: true, url: 'https://example.com/y', title: 'Y', markCount: 3, viewport: { width: 1280, height: 720 }, capturePath: '/tmp/s.png' }],
+      ['browser_see', { ok: false, refused: 'no-session', message: 'gone' }],
+      ['browser_act', { ok: true, action: 'click', matched: 'button "Go"', url: 'https://example.com/' }],
+      ['browser_act', { ok: false, action: 'click', candidates: [{ ref: 'e1' }, { ref: 'e2' }], message: 'ambiguous', url: 'https://example.com/' }],
+      ['browser_act', { ok: false, refused: 'no-session', message: 'gone' }],
     ]
 
     const divergences = []

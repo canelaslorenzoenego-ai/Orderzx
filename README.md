@@ -21,7 +21,7 @@ with your own fingerprint and IP: the one solve that always works.
 **Ready to install — one command:**
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.20/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.21/install.sh | bash
 ```
 
 It clones to `~/.orderzx/dsh-browser`, installs, builds, and prints the exact
@@ -128,7 +128,7 @@ unknown fields and mismatched protocol numbers.
 
 ## Verified end-to-end
 
-**682 checks, all runnable from this checkout:**
+**691 checks, all runnable from this checkout:**
 
 | suite | checks | proves |
 |---|---|---|
@@ -139,6 +139,7 @@ unknown fields and mismatched protocol numbers.
 | mcp | 18 | the bridge over a real spawned child's stdio, hostile JSON-RPC |
 | mount | 8 | the REAL harness path: cordis loader + include + cordis.yml entry mounts us, tools and both skills (`/browser-automation`, `/start`) land, dispose unregisters |
 | live | 31 | real Chromium over CDP: start → stream → click → heal → clips → reels |
+| dock-hostile | 9 | hostile harness shell (fixed + 100vw) with a 700 ms lease wiper: extend at 1280/390, heal, × release |
 | e2e | 15 | real host + real routes + real bundle, end to end |
 | dispatch | 123 | every tool through the real dispatch path: schemas honest, refusals typed |
 | workflow | 23 | record → secrets → replay → background jobs on a real browser |
@@ -163,7 +164,7 @@ pnpm run test:subagent-live  # 9 multi-session isolation steps
 ## Install
 
 ```bash
-curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.20/install.sh | bash
+curl -fsSL https://github.com/canelaslorenzoenego-ai/Orderzx/releases/download/v0.2.0-rc.21/install.sh | bash
 ```
 
 Prefer source? Clone and `pnpm install && pnpm run build`, then wire the built

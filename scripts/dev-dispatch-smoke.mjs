@@ -72,6 +72,49 @@ async function dispatch(name, args = {}) {
 const valueOf = r => (r.isError ? null : r.value)
 const errOf = r => (r.isError ? String(r.error?.message ?? r.error?.kind ?? '').slice(0, 200) : null)
 
+// ── cold phase: every tool with NO session ───────────────────────────────────
+// Refusal values AND their presentationMeta go through real dispatch here.
+// This is the regression guard for the lossless-presentationMeta class: a meta
+// function returning `url: record.url` unconditionally emits undefined on
+// refusals (no url in a refusal value) and the harness rejects the whole call.
+const coldCalls = [
+  ['browser_status', {}],
+  ['browser_navigate', { url: 'https://example.com' }],
+  ['browser_observe', {}],
+  ['browser_see', {}],
+  ['browser_click', { x: 0.5, y: 0.5 }],
+  ['browser_type', { text: 'cold' }],
+  ['browser_press', { key: 'Tab' }],
+  ['browser_scroll', { direction: 'down' }],
+  ['browser_tabs', { action: 'list' }],
+  ['browser_fill_form', { fields: [{ ref: 'cold-ref', value: 'x' }] }],
+  ['browser_extract', { instruction: 'title' }],
+  ['browser_act', { instruction: 'scroll down a little' }],
+  ['browser_wait', { ms: 50 }],
+  ['browser_evaluate', { script: '1+1' }],
+  ['browser_challenge', {}],
+  ['browser_cookies', { action: 'list' }],
+  ['browser_files', { action: 'download', ref: 'cold-ref' }],
+  ['browser_workflow', { action: 'list' }],
+  ['browser_task', { action: 'list' }],
+  ['browser_desktop_view', { enabled: true }],
+  ['browser_transcript', {}],
+  ['browser_clip', { seconds: 1 }],
+  ['browser_reel', { seconds: 1 }],
+  ['browser_handoff', { note: 'cold' }],
+  ['browser_takeover', { reason: 'cold' }],
+  ['browser_stop', {}],
+]
+for (const [name, args] of coldCalls) {
+  const r = await dispatch(name, args)
+  const metaClean = !r.isError || !/presentationMeta|not lossless/i.test(String(errOf(r)))
+  ok(metaClean, `cold: presentationMeta lossless for ${name}`, metaClean ? '' : errOf(r))
+  if (name !== 'browser_status' && name !== 'browser_workflow') { // workflow list is a global read: ok:true with no session is correct
+    const v = valueOf(r)
+    ok(!r.isError && v && v.ok === false && typeof v.refused === 'string', `cold: ${name} → structured refusal value`, r.isError ? errOf(r) : JSON.stringify(v)?.slice(0, 120))
+  }
+}
+
 // ── lifecycle + navigation ───────────────────────────────────────────────────
 const start = await dispatch('browser_start', { label: 'dispatch-probe' })
 ok(!start.isError, 'browser_start dispatches clean', errOf(start) ?? '')
@@ -93,7 +136,7 @@ await dispatch('browser_fill_form', { session, fields: [{ ref: 'noop-ref', value
 await dispatch('browser_extract', { session, instruction: 'the page title' })
 await dispatch('browser_act', { session, instruction: 'scroll down a little' })
 await dispatch('browser_wait', { session, ms: 200 })
-await dispatch('browser_evaluate', { session, expression: '1+1' })
+await dispatch('browser_evaluate', { session, script: '1+1' })
 await dispatch('browser_challenge', { session })
 await dispatch('browser_cookies', { session, action: 'list' })
 await dispatch('browser_files', { session, action: 'list' })

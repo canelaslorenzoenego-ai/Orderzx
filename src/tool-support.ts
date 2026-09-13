@@ -160,7 +160,9 @@ export interface FlatNode {
 
 export const elementsSchema = {
   type: 'array',
-  required: true,
+  // NOT required: every refusal value (no-session, pointer-owned, policy)
+  // legitimately lacks it, and a closed output schema with a required
+  // top-level field rejects its own tool's refusals at dispatch.
   description:
     'Interactive and readable elements, flattened with a depth field. Use `ref` with browser_click / '
     + 'browser_type. This is the cheap observer — prefer it over asking for pixels.',

@@ -256,7 +256,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         type: 'object',
         additionalProperties: false,
         properties: {
-          phase: { type: 'string', required: true },
+          phase: { type: 'string' },
           engine: { type: 'object', additionalProperties: true },
           status: { type: 'object', additionalProperties: true },
           config: { type: 'object', additionalProperties: true },
@@ -298,11 +298,11 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         type: 'object',
         additionalProperties: false,
         properties: {
-          url: { type: 'string', required: true },
-          title: { type: 'string', required: true },
+          url: { type: 'string' },
+          title: { type: 'string' },
           elements: elementsSchema,
-          elementCount: { type: 'number', required: true },
-          truncated: { type: 'boolean', required: true },
+          elementCount: { type: 'number' },
+          truncated: { type: 'boolean' },
           challenge: challengeSchema,
           siteTools: { type: 'boolean' },
           viewport: {
@@ -348,11 +348,10 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         type: 'object',
         additionalProperties: false,
         properties: {
-          url: { type: 'string', required: true },
-          title: { type: 'string', required: true },
+          url: { type: 'string' },
+          title: { type: 'string' },
           marks: {
             type: 'array',
-            required: true,
             description: 'Numbered interactive elements in document order. `mark` is what you pass to browser_click/browser_type; `ref` is the equivalent snapshot ref.',
             items: {
               type: 'object',
@@ -372,8 +371,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
               },
             },
           },
-          markCount: { type: 'number', required: true },
-          candidateCount: { type: 'number', required: true },
+          markCount: { type: 'number' },
+          candidateCount: { type: 'number' },
           challenge: challengeSchema,
           viewport: {
             type: 'object', additionalProperties: false,
@@ -793,7 +792,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       index: { type: 'number', description: 'Tab index for select/close.' },
       url: { type: 'string', description: 'URL for `new`.' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, active: { type: 'number' }, tabs: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } }, refused: { type: 'string' },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, active: { type: 'number' }, tabs: { type: 'array', items: { type: 'object', additionalProperties: true } }, refused: { type: 'string' },
           owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const resolved = resolveSession(host, args.session)
@@ -872,7 +871,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
       submitRef: { type: 'string', description: 'Ref to click after filling. Treated as a sensitive action.' },
       verify: { type: 'boolean', description: 'Read every field back after filling and report per-field expected-vs-actual. Default true — turn it off only for fields that transform input (masks, autocorrect).' },
     },
-    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, filled: { type: 'number' }, failed: { type: 'number' }, verified: { type: 'number' }, mismatched: { type: 'number' }, results: { type: 'array', required: true, items: { type: 'object', additionalProperties: true } }, submitted: { type: 'boolean' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, filled: { type: 'number' }, failed: { type: 'number' }, verified: { type: 'number' }, mismatched: { type: 'number' }, results: { type: 'array', items: { type: 'object', additionalProperties: true } }, submitted: { type: 'boolean' }, url: { type: 'string' }, challenge: challengeSchema, refused: { type: 'string' },
           owner: { type: 'string' }, message: { type: 'string' } } }, render: renderJson },
     async execute(args, exec) {
       const target = resolveTarget(host, args.session)
@@ -1035,7 +1034,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         return {
           tool: TOOL_NAMES.act,
           phase: 'streaming',
-          url: record.url,
+          ...(typeof record.url === 'string' ? { url: record.url } : {}),
           summary: record.ok === true
             ? `act · ${record.matched ?? record.action ?? 'done'}`
             : record.candidates
@@ -1281,8 +1280,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         properties: {
           ok: { type: 'boolean', required: true },
           detection: challengeSchema,
-          verdict: { type: 'string', required: true },
-          action: { type: 'string', required: true },
+          verdict: { type: 'string' },
+          action: { type: 'string' },
           tier: { type: 'string' },
           sessionBound: { type: 'boolean' },
           warning: { type: 'string' },
@@ -1377,7 +1376,7 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
         return {
           tool: TOOL_NAMES.handoff,
           phase: record.outcome === 'passed' ? 'streaming' : 'handoff',
-          url: record.url,
+          ...(typeof record.url === 'string' ? { url: record.url } : {}),
           summary: record.ok === true ? `handoff → ${record.outcome}` : `handoff refused: ${record.message ?? record.refused ?? '?'}`,
         } as never
       },
@@ -1815,6 +1814,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
               },
             },
           },
+          refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -1919,6 +1920,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           url: { type: 'string', description: 'Signed, CSP-sandboxed artifact url.' },
           delivered: { type: 'array', items: { type: 'string' } },
           chatLine: { type: 'string', description: 'INCLUDE VERBATIM IN YOUR REPLY when the user asked to see the run.' },
+          refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -2005,6 +2008,8 @@ export function createBrowserTools(host: BrowserHostController, options: Browser
           lines: { type: 'array', items: { type: 'string' } },
           langs: { type: 'array', items: { type: 'string' }, description: 'Available caption track names (YouTube).' },
           note: { type: 'string' },
+          refused: { type: 'string' },
+          owner: { type: 'string' },
           message: { type: 'string' },
         },
       },
